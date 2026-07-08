@@ -1,0 +1,10 @@
+# game/scripts/global.yaat
+# Shared placeholder interactions kept as data, not engine code.
+
+hotspot missing_asset_note {
+  name "Missing Asset Note"
+
+  on look {
+    say narrator "Missing BMP and WAV paths are intentional in this demo."
+  }
+}

@@ -1,0 +1,24 @@
+# game/rooms/room000_start/script.yaat
+
+room room000_start {
+  background "rooms/room000_start/background.bmp"
+
+  on enter {
+    say narrator "Welcome to the YAAT text-only demo."
+  }
+
+  hotspot start_button {
+    name "Start Game"
+    at 112, 128
+    size 96, 24
+
+    on look {
+      say player "This begins the demo."
+    }
+
+    on click {
+      play_sound "audio/sfx/start_click.wav"
+      goto room001_intro
+    }
+  }
+}
