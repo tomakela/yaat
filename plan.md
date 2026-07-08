@@ -45,7 +45,7 @@ assets:
     first_format: PCM WAV
     compressed_candidate: IMA ADPCM WAV
   scripts:
-    format: simple ASCII custom scripting
+    format: simple ASCII YAAT scripting (`.yaat`)
 
 platform:
   windowing:
@@ -194,7 +194,7 @@ Seed the allowlist with:
 
 ### 6. Specify a minimal adventure scripting format
 
-Create `docs/script-format.md` describing the initial scripting language.
+Use `docs/script-language.md` as the initial scripting language specification.
 
 The format should support:
 
@@ -214,7 +214,7 @@ Keep the parser C-friendly:
 - No dependency on regex libraries.
 - Deterministic memory limits.
 
-Include example room file name: `assets/scripts/room_intro.adv`.
+Include example room file name: `game/rooms/room001_intro/script.yaat`.
 
 ### 7. Define an offline asset packing format
 
