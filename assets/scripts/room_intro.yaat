@@ -1,0 +1,69 @@
+# YAAT demo intro room scaffold.
+# This file intentionally references a few missing assets so the demo renderer
+# can prove that placeholder boxes appear instead of hard failures.
+
+var intro_started = false
+var door_locked = true
+
+room intro {
+  title "Intro Room"
+  background "assets/rooms/intro/background.bmp"
+  fallback_color "#1f2633"
+
+  on enter {
+    set intro_started = true
+    say narrator "You wake in a half-finished room. The engine keeps going even while the art is missing."
+  }
+
+  object note {
+    name "Folded Note"
+    sprite "assets/graphics/objects/folded_note.bmp"
+    at 74, 146
+    size 72, 42
+
+    on look {
+      say player "The note is represented by real placeholder art for now."
+    }
+
+    on click {
+      say narrator "TODO: Replace this note with final pixel art and an inventory action."
+    }
+  }
+
+  object missing_crate {
+    name "Missing Crate Graphic"
+    sprite "assets/graphics/objects/missing_crate.bmp"
+    at 214, 126
+    size 96, 70
+
+    on look {
+      say player "The missing crate art should be drawn as a labeled placeholder rectangle."
+    }
+  }
+
+  hotspot exit_door {
+    name "Locked Exit"
+    sprite "assets/graphics/objects/locked_exit.bmp"
+    at 356, 64
+    size 92, 150
+
+    on click {
+      if door_locked {
+        play_sound "assets/audio/sfx/locked_door.wav"
+        say player "The exit is locked, but the click area and missing sound are still visible in the demo."
+      } else {
+        goto hallway
+      }
+    }
+  }
+
+  hotspot window {
+    name "Small Window"
+    at 486, 42
+    size 96, 68
+
+    on look {
+      say narrator "A pure hotspot with no sprite is drawn as a translucent placeholder box."
+    }
+  }
+}

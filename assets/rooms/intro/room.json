@@ -1,0 +1,53 @@
+{
+  "id": "intro",
+  "title": "Intro Room",
+  "size": { "width": 640, "height": 360 },
+  "background": "assets/rooms/intro/background.bmp",
+  "fallbackColor": "#1f2633",
+  "description": "First playable demo room scaffold. Missing files are expected to render as placeholders.",
+  "entities": [
+    {
+      "id": "note",
+      "kind": "object",
+      "name": "Folded Note",
+      "sprite": "assets/graphics/objects/folded_note.svg",
+      "x": 74,
+      "y": 146,
+      "width": 72,
+      "height": 42,
+      "placeholder": "NOTE"
+    },
+    {
+      "id": "missing_crate",
+      "kind": "object",
+      "name": "Missing Crate Graphic",
+      "sprite": "assets/graphics/objects/missing_crate.bmp",
+      "x": 214,
+      "y": 126,
+      "width": 96,
+      "height": 70,
+      "placeholder": "MISSING CRATE"
+    },
+    {
+      "id": "exit_door",
+      "kind": "hotspot",
+      "name": "Locked Exit",
+      "sprite": "assets/graphics/objects/locked_exit.bmp",
+      "x": 356,
+      "y": 64,
+      "width": 92,
+      "height": 150,
+      "placeholder": "LOCKED EXIT"
+    },
+    {
+      "id": "window",
+      "kind": "hotspot",
+      "name": "Small Window",
+      "x": 486,
+      "y": 42,
+      "width": 96,
+      "height": 68,
+      "placeholder": "WINDOW HOTSPOT"
+    }
+  ]
+}
