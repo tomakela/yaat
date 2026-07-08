@@ -4,6 +4,13 @@
 asset tree described in `docs/asset-structure.md`. Runtime engine code should not
 include or link this tool.
 
+This is a modern host-only developer tool, not a Windows 95 runtime component.
+It is supported with C99-capable host compilers on contemporary development
+platforms such as Linux, macOS, and modern Windows environments. On Windows, the
+directory traversal currently depends on POSIX-compatible `dirent.h` support
+provided by the compiler/runtime distribution, or by a compatible `dirent.h`
+layer supplied by the build environment.
+
 Build and run from the repository root:
 
 ```sh
