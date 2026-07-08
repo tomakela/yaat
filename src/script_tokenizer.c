@@ -60,14 +60,17 @@ static int match(ScriptTokenizer *tokenizer, char expected) {
 }
 
 static int reserve_tokens(ScriptTokenList *list, size_t needed) {
+    size_t capacity;
+    ScriptToken *items;
+
     if (list->capacity >= needed) {
         return 1;
     }
-    size_t capacity = list->capacity == 0 ? 32 : list->capacity * 2;
+    capacity = list->capacity == 0 ? 32 : list->capacity * 2;
     while (capacity < needed) {
         capacity *= 2;
     }
-    ScriptToken *items = (ScriptToken *)realloc(list->items, capacity * sizeof(*items));
+    items = (ScriptToken *)realloc(list->items, capacity * sizeof(*items));
     if (items == NULL) {
         return 0;
     }
@@ -77,14 +80,17 @@ static int reserve_tokens(ScriptTokenList *list, size_t needed) {
 }
 
 static int reserve_diagnostics(ScriptDiagnosticList *list, size_t needed) {
+    size_t capacity;
+    ScriptDiagnostic *items;
+
     if (list->capacity >= needed) {
         return 1;
     }
-    size_t capacity = list->capacity == 0 ? 8 : list->capacity * 2;
+    capacity = list->capacity == 0 ? 8 : list->capacity * 2;
     while (capacity < needed) {
         capacity *= 2;
     }
-    ScriptDiagnostic *items = (ScriptDiagnostic *)realloc(list->items, capacity * sizeof(*items));
+    items = (ScriptDiagnostic *)realloc(list->items, capacity * sizeof(*items));
     if (items == NULL) {
         return 0;
     }
@@ -94,10 +100,12 @@ static int reserve_diagnostics(ScriptDiagnosticList *list, size_t needed) {
 }
 
 static void add_token(ScriptTokenizer *tokenizer, ScriptTokenType type) {
+    ScriptToken *token;
+
     if (!reserve_tokens(&tokenizer->result.tokens, tokenizer->result.tokens.count + 1)) {
         return;
     }
-    ScriptToken *token = &tokenizer->result.tokens.items[tokenizer->result.tokens.count++];
+    token = &tokenizer->result.tokens.items[tokenizer->result.tokens.count++];
     token->type = type;
     token->lexeme = tokenizer->start;
     token->length = (size_t)(tokenizer->current - tokenizer->start);
@@ -106,10 +114,12 @@ static void add_token(ScriptTokenizer *tokenizer, ScriptTokenType type) {
 }
 
 static void add_sized_token(ScriptTokenizer *tokenizer, ScriptTokenType type, const char *lexeme, size_t length) {
+    ScriptToken *token;
+
     if (!reserve_tokens(&tokenizer->result.tokens, tokenizer->result.tokens.count + 1)) {
         return;
     }
-    ScriptToken *token = &tokenizer->result.tokens.items[tokenizer->result.tokens.count++];
+    token = &tokenizer->result.tokens.items[tokenizer->result.tokens.count++];
     token->type = type;
     token->lexeme = lexeme;
     token->length = length;
@@ -118,10 +128,12 @@ static void add_sized_token(ScriptTokenizer *tokenizer, ScriptTokenType type, co
 }
 
 static void add_diagnostic(ScriptTokenizer *tokenizer, const char *message) {
+    ScriptDiagnostic *diagnostic;
+
     if (!reserve_diagnostics(&tokenizer->result.diagnostics, tokenizer->result.diagnostics.count + 1)) {
         return;
     }
-    ScriptDiagnostic *diagnostic = &tokenizer->result.diagnostics.items[tokenizer->result.diagnostics.count++];
+    diagnostic = &tokenizer->result.diagnostics.items[tokenizer->result.diagnostics.count++];
     diagnostic->severity = SCRIPT_DIAGNOSTIC_ERROR;
     diagnostic->message = message;
     diagnostic->line = tokenizer->start_line;
@@ -160,6 +172,8 @@ static void scan_number(ScriptTokenizer *tokenizer) {
 
 static void scan_string(ScriptTokenizer *tokenizer) {
     const char *content = tokenizer->current;
+    size_t length;
+
     while (peek(tokenizer) != '"' && !at_end(tokenizer)) {
         advance(tokenizer);
     }
@@ -169,7 +183,7 @@ static void scan_string(ScriptTokenizer *tokenizer) {
         return;
     }
 
-    size_t length = (size_t)(tokenizer->current - content);
+    length = (size_t)(tokenizer->current - content);
     advance(tokenizer);
     add_sized_token(tokenizer, SCRIPT_TOKEN_STRING, content, length);
 }
