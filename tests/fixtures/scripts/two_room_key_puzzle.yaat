@@ -1,0 +1,107 @@
+# two_room_key_puzzle.yaat
+
+var door_locked = true
+var took_key = false
+
+room hall {
+  background "assets/rooms/hall.png"
+
+  on enter {
+    say narrator "You are standing in a quiet hall."
+  }
+
+  object brass_key {
+    name "Brass Key"
+    sprite "assets/items/brass_key.png"
+    at 96, 136
+    size 18, 10
+
+    on look {
+      say player "A small brass key is lying on the floor."
+    }
+
+    on click {
+      take brass_key
+      hide brass_key
+      set took_key = true
+      say player "I picked up the brass key."
+    }
+  }
+
+  hotspot locked_door {
+    name "Locked Door"
+    at 284, 52
+    size 42, 116
+
+    on look {
+      if door_locked {
+        say player "The door is locked. The keyhole is scratched."
+      } else {
+        say player "The door is unlocked now."
+      }
+    }
+
+    on use {
+      if door_locked {
+        say player "It will not open. I need a key."
+      } else {
+        goto treasure_room
+      }
+    }
+
+    on use brass_key {
+      if door_locked {
+        play_sound "assets/sounds/unlock.wav"
+        set door_locked = false
+        say player "The key fits. The door is unlocked."
+      } else {
+        say player "The door is already unlocked."
+      }
+    }
+
+    on click {
+      if door_locked {
+        say player "Locked."
+      } else {
+        goto treasure_room
+      }
+    }
+  }
+}
+
+room treasure_room {
+  background "assets/rooms/treasure_room.png"
+
+  on enter {
+    say narrator "You step into a small room glittering with treasure."
+  }
+
+  hotspot exit_door {
+    name "Door Back to the Hall"
+    at 12, 54
+    size 38, 112
+
+    on look {
+      say player "That door leads back to the hall."
+    }
+
+    on click {
+      goto hall
+    }
+  }
+
+  object treasure_chest {
+    name "Treasure Chest"
+    sprite "assets/objects/chest.png"
+    at 156, 128
+    size 64, 48
+
+    on look {
+      say player "This must be what I came for."
+    }
+
+    on click {
+      say narrator "You found the treasure."
+    }
+  }
+}
