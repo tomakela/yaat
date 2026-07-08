@@ -29,6 +29,8 @@ runtime:
 
 graphics:
   backend: GDI
+  target_resolution: 320x200
+  target_palette: 256_colors
   backbuffer: CreateDIBSection
   present:
     - BitBlt
