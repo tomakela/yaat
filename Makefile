@@ -17,7 +17,8 @@ LDLIBS = -luser32 -lgdi32
 
 WIN32_SOURCES = \
 	src/main_win32.c \
-	src/platform/win32/gdi_renderer.c
+	src/platform/win32/gdi_renderer.c \
+	src/script_tokenizer.c
 
 # Add future engine runtime .c files here, for example:
 # ENGINE_RUNTIME_SOURCES = src/runtime/foo.c src/runtime/bar.c
