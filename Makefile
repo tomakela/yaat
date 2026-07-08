@@ -3,16 +3,16 @@
 # This manifest is intended to preserve the Windows 95-oriented compiler shape
 # documented in docs/toolchain-compatibility.md: build a PE-i386 Win32 GUI
 # executable from ANSI Win32 sources and link only Win95-era GUI import libs.
-# It defaults to the TinyCC-style command from that document, but callers may
-# override CC, CFLAGS, LDFLAGS, EXE, or ENGINE_RUNTIME_SOURCES for another
+# It defaults to the old MinGW.org-style command from that document, but callers
+# may override CC, CFLAGS, LDFLAGS, EXE, or ENGINE_RUNTIME_SOURCES for another
 # validated Win95-capable compiler.
 
 BUILD_DIR = build
 EXE = $(BUILD_DIR)/yaat.exe
 
-CC = i386-win32-tcc
-CFLAGS =
-LDFLAGS = -Wl,-subsystem=windows
+CC = mingw32-gcc
+CFLAGS = -I src -march=i386 -Os
+LDFLAGS = -mwindows -static-libgcc
 LDLIBS = -luser32 -lgdi32
 
 WIN32_SOURCES = \

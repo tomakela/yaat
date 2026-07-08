@@ -8,11 +8,11 @@ Build a lightweight point-and-click adventure engine that targets Win95 and newe
 
 ```yaml
 compiler:
-  primary_option: evaluate_tcc
+  primary_option: old MinGW
   fallback_options:
     - Open Watcom C
-    - old MinGW
     - MSVC 6
+    - tcc
   language: C89/C99-compatible C
   target: Win32 PE-i386
   compatible_with_win95: required
@@ -72,10 +72,10 @@ Add a `docs/toolchain-compatibility.md` document that evaluates candidate C comp
 
 Include at minimum:
 
-1. `tcc`
+1. MinGW.org / old MinGW targeting `msvcrt.dll`
 2. Open Watcom C
-3. MinGW.org / old MinGW targeting `msvcrt.dll`
-4. MSVC 4.x/5.x/6.x, if available
+3. MSVC 4.x/5.x/6.x, if available
+4. `tcc`
 
 For each compiler, document:
 
