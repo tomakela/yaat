@@ -38,7 +38,7 @@ room room002_exit {
       } else {
         set demo_complete = true
         play_sound "audio/sfx/demo_complete.wav"
-        say narrator "Demo complete. All assets here were text metadata."
+        say narrator "Demo complete. Placeholder assets and metadata are consistent."
       }
     }
   }
@@ -50,7 +50,7 @@ room room002_exit {
     size 24, 48
 
     on look {
-      say player "Even the lamp is only a missing BMP reference."
+      say player "The lamp uses a placeholder BMP sprite."
     }
   }
 }

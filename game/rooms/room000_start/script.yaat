@@ -4,7 +4,7 @@ room room000_start {
   background "rooms/room000_start/background.bmp"
 
   on enter {
-    say narrator "Welcome to the YAAT text-only demo."
+    say narrator "Welcome to the YAAT placeholder asset demo."
   }
 
   hotspot start_button {

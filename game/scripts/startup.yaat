@@ -1,5 +1,5 @@
 # game/scripts/startup.yaat
-# Startup state for the text-only demo asset tree.
+# Startup state for the placeholder demo asset tree.
 
 var door_locked = true
 var intro_seen = false
@@ -8,6 +8,6 @@ var demo_complete = false
 
 room startup_state {
   on enter {
-    say narrator "YAAT text demo state is ready."
+    say narrator "YAAT placeholder demo state is ready."
   }
 }

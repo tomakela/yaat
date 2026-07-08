@@ -197,8 +197,23 @@ static void scan_token(ScriptTokenizer *tokenizer) {
     case '}':
         add_token(tokenizer, SCRIPT_TOKEN_RIGHT_BRACE);
         break;
+    case '(':
+        add_token(tokenizer, SCRIPT_TOKEN_LEFT_PAREN);
+        break;
+    case ')':
+        add_token(tokenizer, SCRIPT_TOKEN_RIGHT_PAREN);
+        break;
+    case '[':
+        add_token(tokenizer, SCRIPT_TOKEN_LEFT_BRACKET);
+        break;
+    case ']':
+        add_token(tokenizer, SCRIPT_TOKEN_RIGHT_BRACKET);
+        break;
     case ',':
         add_token(tokenizer, SCRIPT_TOKEN_COMMA);
+        break;
+    case ':':
+        add_token(tokenizer, SCRIPT_TOKEN_COLON);
         break;
     case '=':
         add_token(tokenizer, match(tokenizer, '=') ? SCRIPT_TOKEN_EQUAL_EQUAL : SCRIPT_TOKEN_EQUAL);
@@ -259,7 +274,12 @@ const char *script_token_type_name(ScriptTokenType type) {
     case SCRIPT_TOKEN_INTEGER: return "integer";
     case SCRIPT_TOKEN_LEFT_BRACE: return "{";
     case SCRIPT_TOKEN_RIGHT_BRACE: return "}";
+    case SCRIPT_TOKEN_LEFT_PAREN: return "(";
+    case SCRIPT_TOKEN_RIGHT_PAREN: return ")";
+    case SCRIPT_TOKEN_LEFT_BRACKET: return "[";
+    case SCRIPT_TOKEN_RIGHT_BRACKET: return "]";
     case SCRIPT_TOKEN_COMMA: return ",";
+    case SCRIPT_TOKEN_COLON: return ":";
     case SCRIPT_TOKEN_EQUAL: return "=";
     case SCRIPT_TOKEN_EQUAL_EQUAL: return "==";
     case SCRIPT_TOKEN_KEYWORD_ROOM: return "room";
