@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "runtime/asset_loader.h"
 
 #define YAAT_WINDOW_CLASS_NAME "YAATWindowClass"
 #define YAAT_WINDOW_TITLE "YAAT"
@@ -100,6 +101,8 @@ static int g_inventory_count;
 static char g_dialogue_speaker[32];
 static char g_dialogue_text[YAAT_TEXT_MAX];
 static int g_dialogue_visible;
+static int g_target_y = YAAT_BACKBUFFER_HEIGHT / 2;
+static YaatRuntimeLoadResult g_runtime_load;
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -172,6 +175,74 @@ static void yaat_draw_rect(YaatGdiRenderer *renderer, int x, int y,
 }
 
 static void yaat_draw_text_block(int x, int y, const char *text, unsigned long color)
+static unsigned long yaat_hash_color(const char *text, unsigned long fallback)
+{
+    unsigned long hash;
+    int i;
+
+    if (text == 0 || text[0] == '\0') {
+        return fallback;
+    }
+
+    hash = 2166136261UL;
+    for (i = 0; text[i] != '\0'; ++i) {
+        hash ^= (unsigned char)text[i];
+        hash *= 16777619UL;
+    }
+
+    return 0x00404040UL | (hash & 0x007f7f7fUL);
+}
+
+static void yaat_draw_runtime_room(void)
+{
+    int i;
+    int floor_y;
+    unsigned long background_color;
+
+    background_color = yaat_hash_color(g_runtime_load.room.background,
+                                        0x00d8c7a3UL);
+    yaat_gdi_renderer_clear(&g_renderer, background_color);
+
+    floor_y = YAAT_BACKBUFFER_HEIGHT - 44;
+    if (g_runtime_load.room.height > 0) {
+        floor_y = (YAAT_BACKBUFFER_HEIGHT * 3) / 4;
+    }
+    yaat_draw_rect(&g_renderer, 0, floor_y, YAAT_BACKBUFFER_WIDTH,
+                   YAAT_BACKBUFFER_HEIGHT - floor_y, 0x005f6f4aUL);
+
+    yaat_draw_rect(&g_renderer, 12, 12, 128, 22, 0x00282828UL);
+    yaat_draw_rect(&g_renderer, 14, 14, 124, 18, 0x00d8d0b8UL);
+
+    for (i = 0; i < g_runtime_load.room.object_count; ++i) {
+        YaatRuntimeObject *object;
+        unsigned long object_color;
+
+        object = &g_runtime_load.room.objects[i];
+        if (!object->visible || object->width <= 0 || object->height <= 0) {
+            continue;
+        }
+        object_color = yaat_hash_color(object->sprite, 0x002f5f9eUL);
+        yaat_draw_rect(&g_renderer, object->x, object->y,
+                       object->width, object->height, 0x00202020UL);
+        yaat_draw_rect(&g_renderer, object->x + 1, object->y + 1,
+                       object->width - 2, object->height - 2, object_color);
+    }
+}
+
+static void yaat_draw_error_scene(void)
+{
+    yaat_gdi_renderer_clear(&g_renderer, 0x00202030UL);
+    yaat_draw_rect(&g_renderer, 24, 28, YAAT_BACKBUFFER_WIDTH - 48, 48,
+                   0x00802020UL);
+    yaat_draw_rect(&g_renderer, 28, 32, YAAT_BACKBUFFER_WIDTH - 56, 40,
+                   0x00e0d0c0UL);
+    yaat_draw_rect(&g_renderer, 40, 92, YAAT_BACKBUFFER_WIDTH - 80, 16,
+                   0x00802020UL);
+    yaat_draw_rect(&g_renderer, 40, 116, YAAT_BACKBUFFER_WIDTH - 120, 16,
+                   0x00802020UL);
+}
+
+static void yaat_render_scene(void)
 {
     int i;
     int cx = x;
@@ -196,6 +267,11 @@ static int yaat_get_var(const char *name)
     if (idx < 0) return 0;
     return g_vars[idx].bool_value;
 }
+    if (g_runtime_load.ok) {
+        yaat_draw_runtime_room();
+    } else {
+        yaat_draw_error_scene();
+    }
 
 static void yaat_set_var(const char *name, int value)
 {
@@ -582,6 +658,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
 {
     WNDCLASSEXA window_class; HWND window; MSG message;
     (void)previous_instance; (void)command_line;
+    WNDCLASSEXA window_class;
+    HWND window;
+    MSG message;
+
+    (void)previous_instance;
+    (void)command_line;
+
+    yaat_runtime_load_start_room("game/game.ini", &g_runtime_load);
+
     ZeroMemory(&window_class, sizeof(window_class));
     window_class.cbSize = sizeof(window_class); window_class.style = CS_HREDRAW | CS_VREDRAW; window_class.lpfnWndProc = yaat_window_proc;
     window_class.hInstance = instance; window_class.hCursor = LoadCursorA(0, IDC_ARROW); window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1); window_class.lpszClassName = YAAT_WINDOW_CLASS_NAME;
