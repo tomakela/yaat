@@ -10,7 +10,7 @@ The first milestone deliberately excludes user-defined functions, loops, and arb
 - Event blocks attached to rooms, objects, and hotspots.
 - Ordered command lists.
 - Literal values and simple identifiers.
-- Simple `if` statements with narrowly defined conditions, such as checking inventory state, flags, or current room/object state.
+- Simple `if` statements with narrowly defined conditions, such as checking inventory state, boolean flags, equality against simple values, or current room/object state.
 
 This keeps execution deterministic, avoids unbounded runtime behavior, and makes save/load state easier to reason about.
 
@@ -29,7 +29,7 @@ Recommended token categories:
 - **Strings**: quoted text for dialogue, labels, asset paths, and room transition targets.
 - **Numbers**: integer values for coordinates, dimensions, priorities, or future deterministic counters.
 - **Braces and punctuation**: `{`, `}`, `(`, `)`, `[`, `]`, `,`, `:`, and statement terminators if the language adopts them.
-- **Operators**: `=`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `!`, `&&`, and `||`, limited to the subset supported by the parser.
+- **Operators**: `=` and `==` for version 0. Reserve other operators for future versions instead of tokenizing them as accepted syntax.
 - **Keywords**: `room`, `object`, `hotspot`, `event`, `on`, `if`, `else`, `true`, `false`, and any reserved command-like words that should not be accepted as identifiers.
 - **End-of-file**: an explicit EOF token to simplify parser termination.
 
@@ -37,7 +37,7 @@ Implementation notes:
 
 - Store token text as slices into the original source or as owned strings, but keep ownership rules explicit in `script_tokenizer.h`.
 - Track `line` and `column` on every token.
-- Support comments early, preferably `// line comments`, so authored scripts can be documented.
+- Support the language-defined `#` line comments so authored scripts can be documented consistently.
 - Report unterminated strings and unexpected characters as tokenizer diagnostics instead of allowing the parser to fail later with vague errors.
 
 ## 2. Parser module
@@ -54,7 +54,7 @@ The parser should support:
 - `room` declarations with unique identifiers.
 - `object` declarations, either nested in rooms or defined globally and referenced by rooms.
 - `hotspot` declarations with geometry or named regions.
-- Event blocks such as `on enter`, `on exit`, `on click`, `on use`, and inventory-related events.
+- Event blocks such as `on enter`, `on look`, `on click`, `on use`, `on use <item>`, and `on talk`.
 - Command invocations with positional or named arguments.
 - Simple `if` statements whose condition grammar is intentionally limited.
 
