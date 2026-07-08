@@ -1,0 +1,56 @@
+# game/rooms/room002_exit/script.yaat
+
+var demo_complete = false
+
+room room002_exit {
+  background "rooms/room002_exit/background.bmp"
+
+  on enter {
+    say narrator "You step through the unlocked door into the exit room."
+  }
+
+  hotspot back_door {
+    name "Back Door"
+    at 8, 48
+    size 38, 112
+
+    on look {
+      say player "That door leads back to the intro room."
+    }
+
+    on click {
+      goto room001_intro
+    }
+  }
+
+  hotspot ending_plaque {
+    name "Ending Plaque"
+    at 112, 72
+    size 96, 48
+
+    on look {
+      say narrator "The plaque waits for a final click."
+    }
+
+    on click {
+      if demo_complete {
+        say narrator "The demo is already complete."
+      } else {
+        set demo_complete = true
+        play_sound "audio/sfx/demo_complete.wav"
+        say narrator "Demo complete. All assets here were text metadata."
+      }
+    }
+  }
+
+  object exit_lamp {
+    name "Exit Lamp"
+    sprite "rooms/room002_exit/objects/exit_lamp.bmp"
+    at 236, 64
+    size 24, 48
+
+    on look {
+      say player "Even the lamp is only a missing BMP reference."
+    }
+  }
+}

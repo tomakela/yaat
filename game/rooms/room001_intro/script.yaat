@@ -1,0 +1,87 @@
+# game/rooms/room001_intro/script.yaat
+
+var door_locked = true
+var intro_seen = false
+var took_key = false
+
+room room001_intro {
+  background "rooms/room001_intro/background.bmp"
+
+  on enter {
+    if intro_seen {
+      say narrator "You are back in the quiet intro room."
+    } else {
+      set intro_seen = true
+      say narrator "You stand in a room drawn only by placeholder data."
+    }
+  }
+
+  object brass_key {
+    name "Brass Key"
+    sprite "rooms/room001_intro/objects/brass_key.bmp"
+    at 132, 148
+    size 18, 10
+
+    on look {
+      say player "A small brass key is lying on the floor."
+    }
+
+    on click {
+      take brass_key
+      hide brass_key
+      set took_key = true
+      play_sound "audio/sfx/pickup_key.wav"
+      say player "I picked up the brass key."
+    }
+  }
+
+  hotspot faded_sign {
+    name "Faded Sign"
+    at 24, 40
+    size 80, 32
+
+    on look {
+      say narrator "The sign reads: use the key on the locked door."
+    }
+  }
+
+  hotspot locked_door {
+    name "Locked Door"
+    at 268, 48
+    size 40, 112
+
+    on look {
+      if door_locked {
+        say player "The door is locked. There is a bright brass keyhole."
+      } else {
+        say player "The door is unlocked now."
+      }
+    }
+
+    on use {
+      if door_locked {
+        say player "It will not open without the right key."
+      } else {
+        goto room002_exit
+      }
+    }
+
+    on use brass_key {
+      if door_locked {
+        play_sound "audio/sfx/door_unlock.wav"
+        set door_locked = false
+        say player "The brass key turns, and the door unlocks."
+      } else {
+        say player "The door is already unlocked."
+      }
+    }
+
+    on click {
+      if door_locked {
+        say player "Locked. I should use something on it."
+      } else {
+        goto room002_exit
+      }
+    }
+  }
+}
