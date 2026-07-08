@@ -19,9 +19,9 @@ WIN32_SOURCES = \
 	src/main_win32.c \
 	src/platform/win32/gdi_renderer.c
 
-# Add future engine runtime .c files here, for example:
-# ENGINE_RUNTIME_SOURCES = src/runtime/foo.c src/runtime/bar.c
-ENGINE_RUNTIME_SOURCES =
+# Add future engine runtime .c files here.
+ENGINE_RUNTIME_SOURCES = \
+	src/runtime/asset_loader.c
 
 SOURCES = $(WIN32_SOURCES) $(ENGINE_RUNTIME_SOURCES)
 
