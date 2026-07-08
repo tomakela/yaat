@@ -8,7 +8,7 @@ Create a Markdown document that defines the recommended folder and data structur
 
 The game needs an organized asset layout covering rooms, graphics, scripts, dialogs, audio, inventory, UI, fonts, palettes, localization strings, save data, and optional release packaging.
 
-The target platform is Windows 95, so the structure should favor simple files and formats such as BMP, WAV, MIDI, INI, and TXT.
+The target platform is Windows 95, so the structure should favor simple files and formats such as BMP, WAV, MIDI, INI, and TXT. Graphics should be designed around a fixed 320x200 resolution and a 256-color palette.
 
 ## Deliverable
 
@@ -32,6 +32,7 @@ The document should cover:
 - Optional packed release data.
 - Recommended Win95-compatible file formats.
 - Naming conventions and compatibility notes.
+- A clear technical limitation that target room/background art uses 320x200 resolution with a 256-color palette.
 
 ## Proposed Folder Structure
 
