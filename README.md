@@ -20,6 +20,55 @@ YAAT is an experimental Windows 95-friendly point-and-click adventure engine pro
 - [PNG library suitability](docs/png-library-suitability.md)
 - [Win95 API allowlist](docs/win95-api-allowlist.md)
 
+## Building the Win32 engine shell
+
+The current engine shell is a Win32/GDI GUI program. It opens a basic YAAT window; the full game runtime is not wired into the message loop yet.
+
+The primary Windows 95 compatibility baseline is the original MinGW.org 32-bit toolchain that targets `msvcrt.dll` (commonly GCC 3.x/4.x-era MinGW.org distributions). Do not assume modern MinGW-w64 builds are Windows 95-compatible: verify that the generated executable is PE-i386, links only Win95-era system imports, and does not introduce NT-only startup/runtime imports. Use `-march=i386` for conservative CPU compatibility and `-static-libgcc` when supported so the executable does not require a separate `libgcc` DLL. The executable may still depend on `MSVCRT.DLL`, which must be present on the target Windows 95 system.
+
+From a Windows shell with `mingw32-gcc` on `PATH`, either run the helper script:
+
+```bat
+scripts\build_engine_mingw.bat
+```
+
+or compile directly:
+
+```bat
+if not exist build mkdir build
+mingw32-gcc -I src -mwindows -march=i386 -Os -static-libgcc -o build\yaat_engine_mingw.exe src\main_win32.c src\platform\win32\gdi_renderer.c -luser32 -lgdi32
+```
+
+On a Unix-like host with a compatible MinGW cross-compiler named `mingw32-gcc`, the repository `Makefile` uses the same compiler shape:
+
+```sh
+make
+```
+
+Override `CC` if your validated Win95-capable cross-compiler has a different name:
+
+```sh
+make CC=i386-mingw32-gcc
+```
+
+For alternate compilers and smoke-test commands, see [Toolchain compatibility](docs/toolchain-compatibility.md).
+
+## Running the Win32 engine shell
+
+After building, run the generated executable on Windows:
+
+```bat
+build\yaat_engine_mingw.exe
+```
+
+If built with `make`, the default output name is:
+
+```bat
+build\yaat.exe
+```
+
+For Windows 95 testing, copy the executable to the target machine or VM together with any required runtime DLLs from the validated toolchain. With the MinGW.org baseline and `-static-libgcc`, expect Windows system DLLs plus `MSVCRT.DLL`; inspect imports with `dumpbin /imports`, `objdump -p`, or Dependency Walker before treating a build as Win95-compatible.
+
 ## Quick checks
 
 Build and run the offline asset validator from the repository root:
