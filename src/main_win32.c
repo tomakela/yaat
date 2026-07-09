@@ -30,6 +30,13 @@
 #define YAAT_TEXT_MAX 160
 #define YAAT_MAX_RUNTIME_HOTSPOTS 32
 
+typedef struct YaatViewport {
+    int x;
+    int y;
+    int width;
+    int height;
+} YaatViewport;
+
 typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT } YaatEntityKind;
 typedef enum YaatCommandKind { YAAT_CMD_SAY, YAAT_CMD_SET, YAAT_CMD_GOTO, YAAT_CMD_PLAY_SOUND, YAAT_CMD_TAKE, YAAT_CMD_HIDE, YAAT_CMD_IF } YaatCommandKind;
 
@@ -111,6 +118,9 @@ static YaatRuntimeLoadResult g_runtime_load;
 static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
 static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
+static int g_fullscreen;
+static RECT g_windowed_rect;
+static DWORD g_windowed_style;
 
 typedef struct YaatBitmap {
     unsigned long *pixels;
@@ -1292,20 +1302,78 @@ static void yaat_click_game(int x, int y)
     }
 }
 
+static void yaat_calculate_viewport(int client_width, int client_height,
+                                    YaatViewport *viewport)
+{
+    int scaled_width;
+    int scaled_height;
+
+    if (viewport == 0) return;
+    viewport->x = 0;
+    viewport->y = 0;
+    viewport->width = 0;
+    viewport->height = 0;
+    if (client_width <= 0 || client_height <= 0) return;
+
+    scaled_width = client_width;
+    scaled_height = (client_width * YAAT_BACKBUFFER_HEIGHT) / YAAT_BACKBUFFER_WIDTH;
+    if (scaled_height > client_height) {
+        scaled_height = client_height;
+        scaled_width = (client_height * YAAT_BACKBUFFER_WIDTH) / YAAT_BACKBUFFER_HEIGHT;
+    }
+    if (scaled_width < 1) scaled_width = 1;
+    if (scaled_height < 1) scaled_height = 1;
+
+    viewport->width = scaled_width;
+    viewport->height = scaled_height;
+    viewport->x = (client_width - scaled_width) / 2;
+    viewport->y = (client_height - scaled_height) / 2;
+}
+
+static void yaat_toggle_fullscreen(HWND window)
+{
+    if (!g_fullscreen) {
+        g_windowed_style = (DWORD)GetWindowLongA(window, GWL_STYLE);
+        GetWindowRect(window, &g_windowed_rect);
+        SetWindowLongA(window, GWL_STYLE, (LONG)WS_POPUP);
+        SetWindowPos(window, HWND_TOP, 0, 0,
+                     GetSystemMetrics(SM_CXSCREEN),
+                     GetSystemMetrics(SM_CYSCREEN),
+                     SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        g_fullscreen = 1;
+    } else {
+        SetWindowLongA(window, GWL_STYLE, (LONG)g_windowed_style);
+        SetWindowPos(window, HWND_NOTOPMOST,
+                     g_windowed_rect.left, g_windowed_rect.top,
+                     g_windowed_rect.right - g_windowed_rect.left,
+                     g_windowed_rect.bottom - g_windowed_rect.top,
+                     SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        g_fullscreen = 0;
+    }
+    InvalidateRect(window, 0, TRUE);
+}
+
 static int yaat_client_to_backbuffer(HWND window, int client_x, int client_y,
                                      int *backbuffer_x, int *backbuffer_y)
 {
     RECT client_rect;
     int client_width;
     int client_height;
+    YaatViewport viewport;
 
     if (GetClientRect(window, &client_rect) == 0) return 0;
     client_width = client_rect.right - client_rect.left;
     client_height = client_rect.bottom - client_rect.top;
-    if (client_width <= 0 || client_height <= 0) return 0;
-    *backbuffer_x = yaat_clamp_int((client_x * YAAT_BACKBUFFER_WIDTH) / client_width,
+    yaat_calculate_viewport(client_width, client_height, &viewport);
+    if (viewport.width <= 0 || viewport.height <= 0) return 0;
+    if (client_x < viewport.x || client_y < viewport.y ||
+        client_x >= viewport.x + viewport.width ||
+        client_y >= viewport.y + viewport.height) {
+        return 0;
+    }
+    *backbuffer_x = yaat_clamp_int(((client_x - viewport.x) * YAAT_BACKBUFFER_WIDTH) / viewport.width,
                                    0, YAAT_BACKBUFFER_WIDTH - 1);
-    *backbuffer_y = yaat_clamp_int((client_y * YAAT_BACKBUFFER_HEIGHT) / client_height,
+    *backbuffer_y = yaat_clamp_int(((client_y - viewport.y) * YAAT_BACKBUFFER_HEIGHT) / viewport.height,
                                    0, YAAT_BACKBUFFER_HEIGHT - 1);
     return 1;
 }
@@ -1374,7 +1442,17 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
     case WM_SETCURSOR:
         SetCursor(0);
         return TRUE;
+    case WM_SYSKEYDOWN:
+        if (w_param == VK_RETURN && (HIWORD(l_param) & KF_ALTDOWN)) {
+            yaat_toggle_fullscreen(window);
+            return 0;
+        }
+        break;
     case WM_KEYDOWN:
+        if (w_param == VK_RETURN && (GetKeyState(VK_MENU) & 0x8000)) {
+            yaat_toggle_fullscreen(window);
+            return 0;
+        }
         if (w_param == VK_LEFT) yaat_nudge_player_target(-16, 0);
         else if (w_param == VK_RIGHT) yaat_nudge_player_target(16, 0);
         else if (w_param == VK_UP) yaat_nudge_player_target(0, -16);
@@ -1391,11 +1469,21 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         if (w_param == YAAT_FRAME_TIMER_ID) { yaat_update_player(); InvalidateRect(window, 0, FALSE); return 0; }
         break;
     case WM_PAINT: {
-        PAINTSTRUCT paint; HDC dc; RECT client_rect;
+        PAINTSTRUCT paint; HDC dc; RECT client_rect; YaatViewport viewport; HBRUSH black_brush;
         dc = BeginPaint(window, &paint);
         if (g_renderer_ready && GetClientRect(window, &client_rect) != 0) {
-            yaat_render_scene();
-            yaat_gdi_renderer_present_stretched(&g_renderer, dc, 0, 0, client_rect.right - client_rect.left, client_rect.bottom - client_rect.top);
+            yaat_calculate_viewport(client_rect.right - client_rect.left,
+                                    client_rect.bottom - client_rect.top,
+                                    &viewport);
+            black_brush = (HBRUSH)GetStockObject(BLACK_BRUSH);
+            FillRect(dc, &client_rect, black_brush);
+            if (viewport.width > 0 && viewport.height > 0) {
+                yaat_render_scene();
+                yaat_gdi_renderer_present_stretched(&g_renderer, dc,
+                                                    viewport.x, viewport.y,
+                                                    viewport.width,
+                                                    viewport.height);
+            }
         }
         EndPaint(window, &paint); return 0;
     }
