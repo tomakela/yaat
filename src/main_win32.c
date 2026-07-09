@@ -76,15 +76,6 @@ struct YaatCommand {
     int else_child_count;
 };
 
-typedef struct YaatRuntimeHotspot {
-    char id[32];
-    char cursor[32];
-    int x;
-    int y;
-    int w;
-    int h;
-} YaatRuntimeHotspot;
-
 typedef struct YaatVar {
     char name[32];
     int bool_value;
@@ -395,7 +386,7 @@ static void yaat_load_runtime_hotspots(void)
         equals = yaat_trim_text(equals);
         if (strcmp(text, "rect") == 0) {
             sscanf(equals, "%d,%d,%d,%d", &hotspot->x, &hotspot->y,
-                   &hotspot->w, &hotspot->h);
+                   &hotspot->width, &hotspot->height);
         } else if (strcmp(text, "cursor") == 0) {
             yaat_copy(hotspot->cursor, sizeof(hotspot->cursor), equals,
                       strlen(equals));
@@ -410,9 +401,9 @@ static YaatRuntimeHotspot *yaat_runtime_hotspot_at(int x, int y)
 
     for (i = g_runtime_hotspot_count - 1; i >= 0; --i) {
         YaatRuntimeHotspot *hotspot = &g_runtime_hotspots[i];
-        if (hotspot->w > 0 && hotspot->h > 0 && x >= hotspot->x &&
-            y >= hotspot->y && x < hotspot->x + hotspot->w &&
-            y < hotspot->y + hotspot->h) {
+        if (hotspot->width > 0 && hotspot->height > 0 && x >= hotspot->x &&
+            y >= hotspot->y && x < hotspot->x + hotspot->width &&
+            y < hotspot->y + hotspot->height) {
             return hotspot;
         }
     }
