@@ -818,13 +818,6 @@ static void yaat_take_inventory(const char *item)
     }
 }
 
-static YaatRoom *yaat_room_by_id(const char *id)
-{
-    int i;
-    for (i = 0; i < g_room_count; ++i) if (strcmp(g_rooms[i].id, id) == 0) return &g_rooms[i];
-    return 0;
-}
-
 static int yaat_room_index_by_id(const char *id)
 {
     int i;
