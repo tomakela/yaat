@@ -4,6 +4,7 @@
 #define YAAT_ASSET_MAX_PATH 128
 #define YAAT_ASSET_MAX_NAME 64
 #define YAAT_ASSET_MAX_OBJECTS 32
+#define YAAT_ASSET_MAX_HOTSPOTS 32
 
 typedef struct YaatRuntimeObject {
     char id[YAAT_ASSET_MAX_NAME];
@@ -16,6 +17,17 @@ typedef struct YaatRuntimeObject {
     int visible;
 } YaatRuntimeObject;
 
+typedef struct YaatRuntimeHotspot {
+    char id[YAAT_ASSET_MAX_NAME];
+    char name[YAAT_ASSET_MAX_NAME];
+    char cursor[YAAT_ASSET_MAX_NAME];
+    char script_event[YAAT_ASSET_MAX_NAME];
+    int x;
+    int y;
+    int width;
+    int height;
+} YaatRuntimeHotspot;
+
 typedef struct YaatRuntimeRoom {
     char id[YAAT_ASSET_MAX_NAME];
     char label[YAAT_ASSET_MAX_NAME];
@@ -25,6 +37,8 @@ typedef struct YaatRuntimeRoom {
     int height;
     int object_count;
     YaatRuntimeObject objects[YAAT_ASSET_MAX_OBJECTS];
+    int hotspot_count;
+    YaatRuntimeHotspot hotspots[YAAT_ASSET_MAX_HOTSPOTS];
 } YaatRuntimeRoom;
 
 typedef struct YaatRuntimeLoadResult {
