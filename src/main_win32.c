@@ -111,10 +111,16 @@ static YaatRuntimeLoadResult g_runtime_load;
 static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
 static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
-static unsigned long *g_background_pixels;
-static int g_background_width;
-static int g_background_height;
-static char g_background_path[YAAT_ASSET_MAX_PATH * 2];
+
+typedef struct YaatBitmap {
+    unsigned long *pixels;
+    int width;
+    int height;
+    char path[YAAT_ASSET_MAX_PATH * 2];
+} YaatBitmap;
+
+static YaatBitmap g_background_bitmap;
+static YaatBitmap g_player_bitmap;
 
 static void yaat_runtime_join_path(char *dst, size_t dst_size,
                                    const char *left, const char *right);
@@ -243,18 +249,18 @@ static long yaat_read_le32_signed(const unsigned char *data)
     return (long)yaat_read_le32(data);
 }
 
-static void yaat_unload_background(void)
+static void yaat_unload_bitmap(YaatBitmap *bitmap)
 {
-    if (g_background_pixels != 0) {
-        free(g_background_pixels);
+    if (bitmap->pixels != 0) {
+        free(bitmap->pixels);
     }
-    g_background_pixels = 0;
-    g_background_width = 0;
-    g_background_height = 0;
-    g_background_path[0] = '\0';
+    bitmap->pixels = 0;
+    bitmap->width = 0;
+    bitmap->height = 0;
+    bitmap->path[0] = '\0';
 }
 
-static int yaat_load_bmp_background(const char *path)
+static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
 {
     FILE *file;
     unsigned char file_header[14];
@@ -277,14 +283,14 @@ static int yaat_load_bmp_background(const char *path)
     if (path == 0 || path[0] == '\0') {
         return 0;
     }
-    if (strcmp(g_background_path, path) == 0 && g_background_pixels != 0) {
+    if (strcmp(bitmap->path, path) == 0 && bitmap->pixels != 0) {
         return 1;
     }
 
     file = fopen(path, "rb");
     if (file == 0) {
-        yaat_unload_background();
-        yaat_copy(g_background_path, sizeof(g_background_path), path,
+        yaat_unload_bitmap(bitmap);
+        yaat_copy(bitmap->path, sizeof(bitmap->path), path,
                   strlen(path));
         return 0;
     }
@@ -294,14 +300,14 @@ static int yaat_load_bmp_background(const char *path)
         fread(info_header, 1, sizeof(info_header), file) !=
         sizeof(info_header)) {
         fclose(file);
-        yaat_unload_background();
+        yaat_unload_bitmap(bitmap);
         return 0;
     }
 
     if (file_header[0] != 'B' || file_header[1] != 'M' ||
         yaat_read_le32(info_header) < 40) {
         fclose(file);
-        yaat_unload_background();
+        yaat_unload_bitmap(bitmap);
         return 0;
     }
 
@@ -323,7 +329,7 @@ static int yaat_load_bmp_background(const char *path)
         (bits_per_pixel != 8 && bits_per_pixel != 24 &&
          bits_per_pixel != 32)) {
         fclose(file);
-        yaat_unload_background();
+        yaat_unload_bitmap(bitmap);
         return 0;
     }
 
@@ -333,7 +339,7 @@ static int yaat_load_bmp_background(const char *path)
 
         if (pixel_offset < 54) {
             fclose(file);
-            yaat_unload_background();
+            yaat_unload_bitmap(bitmap);
             return 0;
         }
         palette_entries = (pixel_offset - 54) / 4;
@@ -342,14 +348,14 @@ static int yaat_load_bmp_background(const char *path)
         }
         if (palette_entries == 0 || fseek(file, 54, SEEK_SET) != 0) {
             fclose(file);
-            yaat_unload_background();
+            yaat_unload_bitmap(bitmap);
             return 0;
         }
         for (i = 0; i < palette_entries; ++i) {
             if (fread(palette_color, 1, sizeof(palette_color), file) !=
                 sizeof(palette_color)) {
                 fclose(file);
-                yaat_unload_background();
+                yaat_unload_bitmap(bitmap);
                 return 0;
             }
             palette[i] = ((unsigned long)palette_color[0]) |
@@ -372,7 +378,7 @@ static int yaat_load_bmp_background(const char *path)
             free(pixels);
         }
         fclose(file);
-        yaat_unload_background();
+        yaat_unload_bitmap(bitmap);
         return 0;
     }
 
@@ -380,7 +386,7 @@ static int yaat_load_bmp_background(const char *path)
         free(row);
         free(pixels);
         fclose(file);
-        yaat_unload_background();
+        yaat_unload_bitmap(bitmap);
         return 0;
     }
 
@@ -391,7 +397,7 @@ static int yaat_load_bmp_background(const char *path)
             free(row);
             free(pixels);
             fclose(file);
-            yaat_unload_background();
+            yaat_unload_bitmap(bitmap);
             return 0;
         }
 
@@ -421,12 +427,56 @@ static int yaat_load_bmp_background(const char *path)
 
     free(row);
     fclose(file);
-    yaat_unload_background();
-    g_background_pixels = pixels;
-    g_background_width = (int)bmp_width;
-    g_background_height = (int)bmp_height;
-    yaat_copy(g_background_path, sizeof(g_background_path), path, strlen(path));
+    yaat_unload_bitmap(bitmap);
+    bitmap->pixels = pixels;
+    bitmap->width = (int)bmp_width;
+    bitmap->height = (int)bmp_height;
+    yaat_copy(bitmap->path, sizeof(bitmap->path), path, strlen(path));
     return 1;
+}
+
+static void yaat_draw_bitmap(YaatBitmap *bitmap, int dst_x, int dst_y)
+{
+    int src_x0;
+    int src_y0;
+    int copy_width;
+    int copy_height;
+    int y;
+
+    if (bitmap == 0 || bitmap->pixels == 0) {
+        return;
+    }
+
+    src_x0 = 0;
+    src_y0 = 0;
+    copy_width = bitmap->width;
+    copy_height = bitmap->height;
+    if (dst_x < 0) {
+        src_x0 = -dst_x;
+        copy_width -= src_x0;
+        dst_x = 0;
+    }
+    if (dst_y < 0) {
+        src_y0 = -dst_y;
+        copy_height -= src_y0;
+        dst_y = 0;
+    }
+    if (dst_x + copy_width > g_renderer.width) {
+        copy_width = g_renderer.width - dst_x;
+    }
+    if (dst_y + copy_height > g_renderer.height) {
+        copy_height = g_renderer.height - dst_y;
+    }
+    if (copy_width <= 0 || copy_height <= 0) {
+        return;
+    }
+
+    for (y = 0; y < copy_height; ++y) {
+        memcpy((unsigned char *)g_renderer.pixels + ((dst_y + y) * g_renderer.pitch) +
+                   ((size_t)dst_x * sizeof(unsigned long)),
+               bitmap->pixels + ((src_y0 + y) * bitmap->width) + src_x0,
+               (size_t)copy_width * sizeof(unsigned long));
+    }
 }
 
 static int yaat_draw_runtime_background(void)
@@ -443,12 +493,12 @@ static int yaat_draw_runtime_background(void)
 
     yaat_runtime_join_path(path, sizeof(path), g_runtime_load.room.room_path,
                            g_runtime_load.room.background);
-    if (!yaat_load_bmp_background(path)) {
+    if (!yaat_load_bmp(&g_background_bitmap, path)) {
         return 0;
     }
 
-    copy_width = g_background_width;
-    copy_height = g_background_height;
+    copy_width = g_background_bitmap.width;
+    copy_height = g_background_bitmap.height;
     if (copy_width > g_renderer.width) {
         copy_width = g_renderer.width;
     }
@@ -458,7 +508,7 @@ static int yaat_draw_runtime_background(void)
 
     for (y = 0; y < copy_height; ++y) {
         memcpy((unsigned char *)g_renderer.pixels + (y * g_renderer.pitch),
-               g_background_pixels + (y * g_background_width),
+               g_background_bitmap.pixels + (y * g_background_bitmap.width),
                (size_t)copy_width * sizeof(unsigned long));
     }
 
@@ -489,6 +539,31 @@ static void yaat_draw_player_placeholder(void)
                    0x001f2430UL);
     yaat_draw_rect(&g_renderer, body_x + 10, body_y + 24, 4, 10,
                    0x001f2430UL);
+}
+
+static void yaat_draw_player(void)
+{
+    char path[YAAT_ASSET_MAX_PATH * 2];
+    const char *sprite_name;
+    int draw_x;
+    int draw_y;
+
+    sprite_name = (g_player_x != g_target_x || g_player_y != g_target_y) ?
+                  "player_walk.bmp" : "player_idle.bmp";
+    yaat_runtime_join_path(path, sizeof(path), "game/graphics/sprites",
+                           sprite_name);
+    if (!yaat_load_bmp(&g_player_bitmap, path)) {
+        yaat_runtime_join_path(path, sizeof(path), "graphics/sprites",
+                               sprite_name);
+    }
+    if (!yaat_load_bmp(&g_player_bitmap, path)) {
+        yaat_draw_player_placeholder();
+        return;
+    }
+
+    draw_x = g_player_x - (g_player_bitmap.width / 2);
+    draw_y = g_player_y - g_player_bitmap.height;
+    yaat_draw_bitmap(&g_player_bitmap, draw_x, draw_y);
 }
 
 static void yaat_draw_runtime_room(void)
@@ -534,9 +609,19 @@ static void yaat_draw_runtime_room(void)
     for (i = 0; i < g_runtime_load.room.object_count; ++i) {
         YaatRuntimeObject *object;
         unsigned long object_color;
+        YaatBitmap object_bitmap;
+        char object_path[YAAT_ASSET_MAX_PATH * 2];
 
         object = &g_runtime_load.room.objects[i];
         if (!object->visible || object->width <= 0 || object->height <= 0) {
+            continue;
+        }
+        memset(&object_bitmap, 0, sizeof(object_bitmap));
+        yaat_runtime_join_path(object_path, sizeof(object_path),
+                               g_runtime_load.room.room_path, object->sprite);
+        if (yaat_load_bmp(&object_bitmap, object_path)) {
+            yaat_draw_bitmap(&object_bitmap, object->x, object->y);
+            yaat_unload_bitmap(&object_bitmap);
             continue;
         }
         object_color = yaat_hash_color(object->sprite, 0x002f5f9eUL);
@@ -546,7 +631,7 @@ static void yaat_draw_runtime_room(void)
                        object->width - 2, object->height - 2, object_color);
     }
 
-    yaat_draw_player_placeholder();
+    yaat_draw_player();
 }
 
 
@@ -975,7 +1060,7 @@ static void yaat_draw_script_scene(void)
     }
     yaat_draw_rect(&g_renderer, g_target_x - 5, g_target_y - 1, 11, 3, 0x000f3c70UL);
     yaat_draw_rect(&g_renderer, g_target_x - 1, g_target_y - 5, 3, 11, 0x000f3c70UL);
-    yaat_draw_player_placeholder();
+    yaat_draw_player();
     yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
     if (g_dialogue_visible) {
         yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_speaker, 0x00ffd060UL);
