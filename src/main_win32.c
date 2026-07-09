@@ -229,6 +229,22 @@ static void yaat_draw_runtime_room(void)
     yaat_draw_rect(&g_renderer, 12, 12, 128, 22, 0x00282828UL);
     yaat_draw_rect(&g_renderer, 14, 14, 124, 18, 0x00d8d0b8UL);
 
+    for (i = 0; i < g_runtime_load.room.hotspot_count; ++i) {
+        YaatRuntimeHotspot *hotspot;
+        unsigned long hotspot_color;
+
+        hotspot = &g_runtime_load.room.hotspots[i];
+        if (hotspot->width <= 0 || hotspot->height <= 0) {
+            continue;
+        }
+        hotspot_color = yaat_hash_color(hotspot->cursor, 0x00c08020UL);
+        yaat_draw_rect(&g_renderer, hotspot->x, hotspot->y,
+                       hotspot->width, hotspot->height, 0x00f0d020UL);
+        yaat_draw_rect(&g_renderer, hotspot->x + 1, hotspot->y + 1,
+                       hotspot->width - 2, hotspot->height - 2,
+                       hotspot_color);
+    }
+
     for (i = 0; i < g_runtime_load.room.object_count; ++i) {
         YaatRuntimeObject *object;
         unsigned long object_color;
