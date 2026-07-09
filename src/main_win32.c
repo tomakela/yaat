@@ -14,8 +14,9 @@
 #define IDC_HAND IDC_ARROW
 #endif
 #define YAAT_BACKBUFFER_WIDTH 320
-#define YAAT_BACKBUFFER_HEIGHT 240
-#define YAAT_PLAYFIELD_HEIGHT 200
+#define YAAT_BACKBUFFER_HEIGHT 200
+#define YAAT_PLAYFIELD_HEIGHT YAAT_BACKBUFFER_HEIGHT
+#define YAAT_DEFAULT_SCALE 2
 #define YAAT_PLAYER_WIDTH 18
 #define YAAT_PLAYER_HEIGHT 34
 #define YAAT_PLAYER_SPEED_PIXELS 4
@@ -29,6 +30,21 @@
 #define YAAT_MAX_INVENTORY 16
 #define YAAT_TEXT_MAX 160
 #define YAAT_MAX_RUNTIME_HOTSPOTS 32
+
+
+typedef struct YaatViewport {
+    int x;
+    int y;
+    int width;
+    int height;
+} YaatViewport;
+
+typedef struct YaatFullscreenState {
+    int active;
+    DWORD window_style;
+    DWORD window_ex_style;
+    RECT window_rect;
+} YaatFullscreenState;
 
 typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT } YaatEntityKind;
 typedef enum YaatCommandKind { YAAT_CMD_SAY, YAAT_CMD_SET, YAAT_CMD_GOTO, YAAT_CMD_PLAY_SOUND, YAAT_CMD_TAKE, YAAT_CMD_HIDE, YAAT_CMD_IF } YaatCommandKind;
@@ -111,6 +127,7 @@ static YaatRuntimeLoadResult g_runtime_load;
 static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
 static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
+static YaatFullscreenState g_fullscreen;
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -725,12 +742,12 @@ static void yaat_draw_script_scene(void)
     yaat_draw_rect(&g_renderer, g_target_x - 5, g_target_y - 1, 11, 3, 0x000f3c70UL);
     yaat_draw_rect(&g_renderer, g_target_x - 1, g_target_y - 5, 3, 11, 0x000f3c70UL);
     yaat_draw_player_placeholder();
-    yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
+    yaat_draw_rect(&g_renderer, 0, YAAT_BACKBUFFER_HEIGHT - 40, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
     if (g_dialogue_visible) {
-        yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_speaker, 0x00ffd060UL);
-        yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_text, 0x00f0f0f0UL);
+        yaat_draw_text_block(8, YAAT_BACKBUFFER_HEIGHT - 34, g_dialogue_speaker, 0x00ffd060UL);
+        yaat_draw_text_block(70, YAAT_BACKBUFFER_HEIGHT - 34, g_dialogue_text, 0x00f0f0f0UL);
     } else {
-        yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 12, "Click hotspots to play the demo", 0x00808080UL);
+        yaat_draw_text_block(8, YAAT_BACKBUFFER_HEIGHT - 28, "Click hotspots to play the demo", 0x00808080UL);
     }
 }
 
@@ -956,22 +973,83 @@ static void yaat_click_game(int x, int y)
     }
 }
 
+static YaatViewport yaat_calculate_viewport(int client_width, int client_height)
+{
+    YaatViewport viewport;
+    int width_from_height;
+    int height_from_width;
+
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = 0;
+    viewport.height = 0;
+
+    if (client_width <= 0 || client_height <= 0) return viewport;
+
+    width_from_height = (client_height * YAAT_BACKBUFFER_WIDTH) / YAAT_BACKBUFFER_HEIGHT;
+    if (width_from_height <= client_width) {
+        viewport.width = width_from_height;
+        viewport.height = client_height;
+    } else {
+        height_from_width = (client_width * YAAT_BACKBUFFER_HEIGHT) / YAAT_BACKBUFFER_WIDTH;
+        viewport.width = client_width;
+        viewport.height = height_from_width;
+    }
+
+    if (viewport.width < 1) viewport.width = 1;
+    if (viewport.height < 1) viewport.height = 1;
+    viewport.x = (client_width - viewport.width) / 2;
+    viewport.y = (client_height - viewport.height) / 2;
+    return viewport;
+}
+
 static int yaat_client_to_backbuffer(HWND window, int client_x, int client_y,
                                      int *backbuffer_x, int *backbuffer_y)
 {
     RECT client_rect;
     int client_width;
     int client_height;
+    YaatViewport viewport;
 
     if (GetClientRect(window, &client_rect) == 0) return 0;
     client_width = client_rect.right - client_rect.left;
     client_height = client_rect.bottom - client_rect.top;
-    if (client_width <= 0 || client_height <= 0) return 0;
-    *backbuffer_x = yaat_clamp_int((client_x * YAAT_BACKBUFFER_WIDTH) / client_width,
+    viewport = yaat_calculate_viewport(client_width, client_height);
+    if (viewport.width <= 0 || viewport.height <= 0) return 0;
+    if (client_x < viewport.x || client_y < viewport.y ||
+        client_x >= viewport.x + viewport.width ||
+        client_y >= viewport.y + viewport.height) return 0;
+
+    *backbuffer_x = yaat_clamp_int(((client_x - viewport.x) * YAAT_BACKBUFFER_WIDTH) / viewport.width,
                                    0, YAAT_BACKBUFFER_WIDTH - 1);
-    *backbuffer_y = yaat_clamp_int((client_y * YAAT_BACKBUFFER_HEIGHT) / client_height,
+    *backbuffer_y = yaat_clamp_int(((client_y - viewport.y) * YAAT_BACKBUFFER_HEIGHT) / viewport.height,
                                    0, YAAT_BACKBUFFER_HEIGHT - 1);
     return 1;
+}
+
+static void yaat_toggle_fullscreen(HWND window)
+{
+    if (!g_fullscreen.active) {
+        g_fullscreen.window_style = GetWindowLongA(window, GWL_STYLE);
+        g_fullscreen.window_ex_style = GetWindowLongA(window, GWL_EXSTYLE);
+        GetWindowRect(window, &g_fullscreen.window_rect);
+
+        SetWindowLongA(window, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+        SetWindowLongA(window, GWL_EXSTYLE, g_fullscreen.window_ex_style & ~(DWORD)WS_EX_CLIENTEDGE);
+        SetWindowPos(window, HWND_TOPMOST, 0, 0, GetSystemMetrics(SM_CXSCREEN),
+                     GetSystemMetrics(SM_CYSCREEN), SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        g_fullscreen.active = 1;
+    } else {
+        SetWindowLongA(window, GWL_STYLE, g_fullscreen.window_style);
+        SetWindowLongA(window, GWL_EXSTYLE, g_fullscreen.window_ex_style);
+        SetWindowPos(window, HWND_NOTOPMOST, g_fullscreen.window_rect.left,
+                     g_fullscreen.window_rect.top,
+                     g_fullscreen.window_rect.right - g_fullscreen.window_rect.left,
+                     g_fullscreen.window_rect.bottom - g_fullscreen.window_rect.top,
+                     SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        g_fullscreen.active = 0;
+    }
+    InvalidateRect(window, 0, TRUE);
 }
 
 static void yaat_set_target_from_client(HWND window, int client_x, int client_y)
@@ -1038,7 +1116,17 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
     case WM_SETCURSOR:
         SetCursor(0);
         return TRUE;
+    case WM_SYSKEYDOWN:
+        if (w_param == VK_RETURN && (l_param & 0x20000000L)) {
+            yaat_toggle_fullscreen(window);
+            return 0;
+        }
+        break;
     case WM_KEYDOWN:
+        if (w_param == VK_RETURN && (GetKeyState(VK_MENU) & 0x8000)) {
+            yaat_toggle_fullscreen(window);
+            return 0;
+        }
         if (w_param == VK_LEFT) yaat_nudge_player_target(-16, 0);
         else if (w_param == VK_RIGHT) yaat_nudge_player_target(16, 0);
         else if (w_param == VK_UP) yaat_nudge_player_target(0, -16);
@@ -1055,11 +1143,20 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         if (w_param == YAAT_FRAME_TIMER_ID) { yaat_update_player(); InvalidateRect(window, 0, FALSE); return 0; }
         break;
     case WM_PAINT: {
-        PAINTSTRUCT paint; HDC dc; RECT client_rect;
+        PAINTSTRUCT paint;
+        HDC dc;
+        RECT client_rect;
+        YaatViewport viewport;
         dc = BeginPaint(window, &paint);
         if (g_renderer_ready && GetClientRect(window, &client_rect) != 0) {
+            viewport = yaat_calculate_viewport(client_rect.right - client_rect.left,
+                                               client_rect.bottom - client_rect.top);
             yaat_render_scene();
-            yaat_gdi_renderer_present_stretched(&g_renderer, dc, 0, 0, client_rect.right - client_rect.left, client_rect.bottom - client_rect.top);
+            PatBlt(dc, 0, 0, client_rect.right - client_rect.left,
+                   client_rect.bottom - client_rect.top, BLACKNESS);
+            SetStretchBltMode(dc, COLORONCOLOR);
+            yaat_gdi_renderer_present_stretched(&g_renderer, dc, viewport.x, viewport.y,
+                                                viewport.width, viewport.height);
         }
         EndPaint(window, &paint); return 0;
     }
@@ -1076,6 +1173,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
     WNDCLASSEXA window_class;
     HWND window;
     MSG message;
+    RECT window_rect;
 
     (void)previous_instance;
     (void)command_line;
@@ -1086,7 +1184,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
     window_class.cbSize = sizeof(window_class); window_class.style = CS_HREDRAW | CS_VREDRAW; window_class.lpfnWndProc = yaat_window_proc;
     window_class.hInstance = instance; window_class.hCursor = LoadCursorA(0, IDC_ARROW); window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1); window_class.lpszClassName = YAAT_WINDOW_CLASS_NAME;
     if (RegisterClassExA(&window_class) == 0) return 1;
-    window = CreateWindowExA(0, YAAT_WINDOW_CLASS_NAME, YAAT_WINDOW_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 640, 480, 0, 0, instance, 0);
+    window_rect.left = 0;
+    window_rect.top = 0;
+    window_rect.right = YAAT_BACKBUFFER_WIDTH * YAAT_DEFAULT_SCALE;
+    window_rect.bottom = YAAT_BACKBUFFER_HEIGHT * YAAT_DEFAULT_SCALE;
+    AdjustWindowRect(&window_rect, WS_OVERLAPPEDWINDOW, FALSE);
+    window = CreateWindowExA(0, YAAT_WINDOW_CLASS_NAME, YAAT_WINDOW_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, window_rect.right - window_rect.left, window_rect.bottom - window_rect.top, 0, 0, instance, 0);
     if (window == 0) return 1;
     ShowWindow(window, show_command); UpdateWindow(window);
     while (GetMessageA(&message, 0, 0, 0) > 0) { TranslateMessage(&message); DispatchMessageA(&message); }
