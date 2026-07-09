@@ -102,6 +102,8 @@ static int g_player_x = YAAT_BACKBUFFER_WIDTH / 2;
 static int g_player_y = YAAT_PLAYFIELD_HEIGHT / 2;
 static int g_target_x = YAAT_BACKBUFFER_WIDTH / 2;
 static int g_target_y = YAAT_PLAYFIELD_HEIGHT / 2;
+static int g_cursor_x = YAAT_BACKBUFFER_WIDTH / 2;
+static int g_cursor_y = YAAT_PLAYFIELD_HEIGHT / 2;
 static YaatRoom g_rooms[YAAT_MAX_ROOMS];
 static int g_room_count;
 static int g_current_room;
@@ -303,6 +305,33 @@ static void yaat_draw_runtime_room(void)
     }
 
     yaat_draw_player_placeholder();
+}
+
+
+static void yaat_draw_cursor_placeholder(void)
+{
+    unsigned long outline_color;
+    unsigned long fill_color;
+
+    outline_color = 0x00000000UL;
+    fill_color = strcmp(g_cursor_state, "use") == 0 ? 0x00ffe070UL : 0x00ffffffUL;
+
+    yaat_draw_rect(&g_renderer, g_cursor_x, g_cursor_y, 2, 14, outline_color);
+    yaat_draw_rect(&g_renderer, g_cursor_x + 2, g_cursor_y + 2, 2, 10, outline_color);
+    yaat_draw_rect(&g_renderer, g_cursor_x + 4, g_cursor_y + 4, 2, 8, outline_color);
+    yaat_draw_rect(&g_renderer, g_cursor_x + 6, g_cursor_y + 6, 2, 6, outline_color);
+    yaat_draw_rect(&g_renderer, g_cursor_x + 8, g_cursor_y + 8, 2, 4, outline_color);
+    yaat_draw_rect(&g_renderer, g_cursor_x + 1, g_cursor_y + 1, 1, 11, fill_color);
+    yaat_draw_rect(&g_renderer, g_cursor_x + 2, g_cursor_y + 3, 2, 7, fill_color);
+    yaat_draw_rect(&g_renderer, g_cursor_x + 4, g_cursor_y + 5, 2, 5, fill_color);
+    yaat_draw_rect(&g_renderer, g_cursor_x + 6, g_cursor_y + 7, 2, 3, fill_color);
+
+    if (strcmp(g_cursor_state, "use") == 0) {
+        yaat_draw_rect(&g_renderer, g_cursor_x + 9, g_cursor_y + 9, 5, 2,
+                       outline_color);
+        yaat_draw_rect(&g_renderer, g_cursor_x + 10, g_cursor_y + 10, 3, 1,
+                       fill_color);
+    }
 }
 
 static char *yaat_trim_text(char *text)
@@ -718,24 +747,36 @@ static void yaat_render_scene(void)
 {
     if (g_runtime_load.ok) {
         yaat_draw_runtime_room();
-        if (strcmp(g_cursor_state, "arrow") != 0) {
-            yaat_draw_rect(&g_renderer, g_target_x - 2, g_target_y - 2, 5, 5, 0x00ffffffUL);
-            yaat_draw_rect(&g_renderer, g_target_x - 1, g_target_y - 1, 3, 3, 0x00000000UL);
-        }
     } else if (g_room_count > 0) {
         yaat_draw_script_scene();
     } else {
         yaat_draw_error_scene();
     }
+    yaat_draw_cursor_placeholder();
 }
 
 static void yaat_update_player(void)
 {
-    int dx = g_target_x - g_player_x;
-    int dy = g_target_y - g_player_y;
+    int dx;
+    int dy;
+
+    g_target_x = yaat_clamp_int(g_target_x, YAAT_PLAYER_WIDTH / 2,
+                                YAAT_BACKBUFFER_WIDTH - (YAAT_PLAYER_WIDTH / 2));
+    g_target_y = yaat_clamp_int(g_target_y, YAAT_PLAYER_HEIGHT,
+                                YAAT_PLAYFIELD_HEIGHT - 1);
+    dx = g_target_x - g_player_x;
+    dy = g_target_y - g_player_y;
     if (dx > YAAT_PLAYER_SPEED_PIXELS) dx = YAAT_PLAYER_SPEED_PIXELS; else if (dx < -YAAT_PLAYER_SPEED_PIXELS) dx = -YAAT_PLAYER_SPEED_PIXELS;
     if (dy > YAAT_PLAYER_SPEED_PIXELS) dy = YAAT_PLAYER_SPEED_PIXELS; else if (dy < -YAAT_PLAYER_SPEED_PIXELS) dy = -YAAT_PLAYER_SPEED_PIXELS;
     g_player_x += dx; g_player_y += dy;
+}
+
+static void yaat_nudge_player_target(int dx, int dy)
+{
+    g_target_x = yaat_clamp_int(g_target_x + dx, YAAT_PLAYER_WIDTH / 2,
+                                YAAT_BACKBUFFER_WIDTH - (YAAT_PLAYER_WIDTH / 2));
+    g_target_y = yaat_clamp_int(g_target_y + dy, YAAT_PLAYER_HEIGHT,
+                                YAAT_PLAYFIELD_HEIGHT - 1);
 }
 
 
@@ -949,9 +990,11 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y)
 
     if (!yaat_client_to_backbuffer(window, client_x, client_y,
                                    &backbuffer_x, &backbuffer_y)) return;
+    g_cursor_x = backbuffer_x;
+    g_cursor_y = backbuffer_y;
     g_target_x = backbuffer_x;
-    g_target_y = yaat_clamp_int(backbuffer_y, 0, YAAT_PLAYFIELD_HEIGHT - 1);
-    yaat_click_game(g_target_x, g_target_y);
+    g_target_y = yaat_clamp_int(backbuffer_y, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
+    yaat_click_game(backbuffer_x, backbuffer_y);
 }
 
 static void yaat_update_cursor_from_client(HWND window, int client_x, int client_y)
@@ -964,10 +1007,8 @@ static void yaat_update_cursor_from_client(HWND window, int client_x, int client
 
     if (!yaat_client_to_backbuffer(window, client_x, client_y,
                                    &backbuffer_x, &backbuffer_y)) return;
-    if (g_runtime_load.ok) {
-        g_target_x = backbuffer_x;
-        g_target_y = yaat_clamp_int(backbuffer_y, 0, YAAT_BACKBUFFER_HEIGHT - 1);
-    }
+    g_cursor_x = backbuffer_x;
+    g_cursor_y = backbuffer_y;
 
     hotspot = g_runtime_load.ok ? yaat_runtime_hotspot_at(backbuffer_x, backbuffer_y) : 0;
     cursor_state = hotspot != 0 ? hotspot->cursor : "arrow";
@@ -975,7 +1016,8 @@ static void yaat_update_cursor_from_client(HWND window, int client_x, int client
               strlen(cursor_state));
 
     win32_cursor = strcmp(g_cursor_state, "use") == 0 ? IDC_HAND : IDC_ARROW;
-    SetCursor(LoadCursorA(0, win32_cursor));
+    (void)win32_cursor;
+    SetCursor(0);
     InvalidateRect(window, 0, FALSE);
 }
 
@@ -1001,6 +1043,17 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
     case WM_MOUSEMOVE:
         yaat_update_cursor_from_client(window, (int)(short)LOWORD(l_param),
                                        (int)(short)HIWORD(l_param));
+        return 0;
+    case WM_SETCURSOR:
+        SetCursor(0);
+        return TRUE;
+    case WM_KEYDOWN:
+        if (w_param == VK_LEFT) yaat_nudge_player_target(-16, 0);
+        else if (w_param == VK_RIGHT) yaat_nudge_player_target(16, 0);
+        else if (w_param == VK_UP) yaat_nudge_player_target(0, -16);
+        else if (w_param == VK_DOWN) yaat_nudge_player_target(0, 16);
+        else break;
+        InvalidateRect(window, 0, FALSE);
         return 0;
     case WM_LBUTTONDOWN:
         if (g_dialogue_visible) g_dialogue_visible = 0;
