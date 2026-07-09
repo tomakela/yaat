@@ -10,6 +10,9 @@
 
 #define YAAT_WINDOW_CLASS_NAME "YAATWindowClass"
 #define YAAT_WINDOW_TITLE "YAAT"
+#ifndef IDC_HAND
+#define IDC_HAND IDC_ARROW
+#endif
 #define YAAT_BACKBUFFER_WIDTH 320
 #define YAAT_BACKBUFFER_HEIGHT 240
 #define YAAT_PLAYFIELD_HEIGHT 200
@@ -25,6 +28,7 @@
 #define YAAT_MAX_VARS 64
 #define YAAT_MAX_INVENTORY 16
 #define YAAT_TEXT_MAX 160
+#define YAAT_MAX_RUNTIME_HOTSPOTS 32
 
 typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT } YaatEntityKind;
 typedef enum YaatCommandKind { YAAT_CMD_SAY, YAAT_CMD_SET, YAAT_CMD_GOTO, YAAT_CMD_PLAY_SOUND, YAAT_CMD_TAKE, YAAT_CMD_HIDE, YAAT_CMD_IF } YaatCommandKind;
@@ -72,6 +76,15 @@ struct YaatCommand {
     int else_child_count;
 };
 
+typedef struct YaatRuntimeHotspot {
+    char id[32];
+    char cursor[32];
+    int x;
+    int y;
+    int w;
+    int h;
+} YaatRuntimeHotspot;
+
 typedef struct YaatVar {
     char name[32];
     int bool_value;
@@ -102,6 +115,9 @@ static char g_dialogue_speaker[32];
 static char g_dialogue_text[YAAT_TEXT_MAX];
 static int g_dialogue_visible;
 static YaatRuntimeLoadResult g_runtime_load;
+static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
+static int g_runtime_hotspot_count;
+static char g_cursor_state[32] = "arrow";
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -243,6 +259,91 @@ static void yaat_draw_runtime_room(void)
         yaat_draw_rect(&g_renderer, object->x + 1, object->y + 1,
                        object->width - 2, object->height - 2, object_color);
     }
+}
+
+static char *yaat_trim_text(char *text)
+{
+    char *end;
+
+    while (*text != '\0' && (*text == ' ' || *text == '\t' || *text == '\r' || *text == '\n')) {
+        ++text;
+    }
+    end = text + strlen(text);
+    while (end > text && (*(end - 1) == ' ' || *(end - 1) == '\t' || *(end - 1) == '\r' || *(end - 1) == '\n')) {
+        --end;
+    }
+    *end = '\0';
+    return text;
+}
+
+static void yaat_load_runtime_hotspots(void)
+{
+    char path[YAAT_ASSET_MAX_PATH];
+    FILE *file;
+    char line[256];
+    YaatRuntimeHotspot *hotspot;
+
+    g_runtime_hotspot_count = 0;
+    if (!g_runtime_load.ok || g_runtime_load.room.room_path[0] == '\0') return;
+
+    yaat_copy(path, sizeof(path), g_runtime_load.room.room_path,
+              strlen(g_runtime_load.room.room_path));
+    if (strlen(path) + strlen("/hotspots.ini") >= sizeof(path)) return;
+    strcat(path, "/hotspots.ini");
+
+    file = fopen(path, "r");
+    if (!file) return;
+
+    hotspot = 0;
+    while (fgets(line, sizeof(line), file) != 0) {
+        char *text;
+        char *equals;
+
+        text = yaat_trim_text(line);
+        if (text[0] == '\0' || text[0] == ';' || text[0] == '#') continue;
+        if (text[0] == '[') {
+            char *close = strchr(text, ']');
+            if (close != 0 && g_runtime_hotspot_count < YAAT_MAX_RUNTIME_HOTSPOTS) {
+                *close = '\0';
+                hotspot = &g_runtime_hotspots[g_runtime_hotspot_count++];
+                memset(hotspot, 0, sizeof(*hotspot));
+                yaat_copy(hotspot->id, sizeof(hotspot->id), text + 1,
+                          strlen(text + 1));
+                yaat_copy(hotspot->cursor, sizeof(hotspot->cursor), "arrow", 5);
+            }
+            continue;
+        }
+        if (hotspot == 0) continue;
+        equals = strchr(text, '=');
+        if (equals == 0) continue;
+        *equals = '\0';
+        text = yaat_trim_text(text);
+        ++equals;
+        equals = yaat_trim_text(equals);
+        if (strcmp(text, "rect") == 0) {
+            sscanf(equals, "%d,%d,%d,%d", &hotspot->x, &hotspot->y,
+                   &hotspot->w, &hotspot->h);
+        } else if (strcmp(text, "cursor") == 0) {
+            yaat_copy(hotspot->cursor, sizeof(hotspot->cursor), equals,
+                      strlen(equals));
+        }
+    }
+    fclose(file);
+}
+
+static YaatRuntimeHotspot *yaat_runtime_hotspot_at(int x, int y)
+{
+    int i;
+
+    for (i = g_runtime_hotspot_count - 1; i >= 0; --i) {
+        YaatRuntimeHotspot *hotspot = &g_runtime_hotspots[i];
+        if (hotspot->w > 0 && hotspot->h > 0 && x >= hotspot->x &&
+            y >= hotspot->y && x < hotspot->x + hotspot->w &&
+            y < hotspot->y + hotspot->h) {
+            return hotspot;
+        }
+    }
+    return 0;
 }
 
 static void yaat_draw_error_scene(void)
@@ -581,6 +682,10 @@ static void yaat_render_scene(void)
 {
     if (g_runtime_load.ok) {
         yaat_draw_runtime_room();
+        if (strcmp(g_cursor_state, "arrow") != 0) {
+            yaat_draw_rect(&g_renderer, g_target_x - 2, g_target_y - 2, 5, 5, 0x00ffffffUL);
+            yaat_draw_rect(&g_renderer, g_target_x - 1, g_target_y - 1, 3, 3, 0x00000000UL);
+        }
     } else if (g_room_count > 0) {
         yaat_draw_script_scene();
     } else {
@@ -614,17 +719,59 @@ static void yaat_click_game(int x, int y)
     }
 }
 
+static int yaat_client_to_backbuffer(HWND window, int client_x, int client_y,
+                                     int *backbuffer_x, int *backbuffer_y)
+{
+    RECT client_rect;
+    int client_width;
+    int client_height;
+
+    if (GetClientRect(window, &client_rect) == 0) return 0;
+    client_width = client_rect.right - client_rect.left;
+    client_height = client_rect.bottom - client_rect.top;
+    if (client_width <= 0 || client_height <= 0) return 0;
+    *backbuffer_x = yaat_clamp_int((client_x * YAAT_BACKBUFFER_WIDTH) / client_width,
+                                   0, YAAT_BACKBUFFER_WIDTH - 1);
+    *backbuffer_y = yaat_clamp_int((client_y * YAAT_BACKBUFFER_HEIGHT) / client_height,
+                                   0, YAAT_BACKBUFFER_HEIGHT - 1);
+    return 1;
+}
+
 static void yaat_set_target_from_client(HWND window, int client_x, int client_y)
 {
-    RECT client_rect; int client_width; int client_height;
-    if (GetClientRect(window, &client_rect) == 0) return;
-    client_width = client_rect.right - client_rect.left; client_height = client_rect.bottom - client_rect.top;
-    if (client_width <= 0 || client_height <= 0) return;
-    g_target_x = (client_x * YAAT_BACKBUFFER_WIDTH) / client_width;
-    g_target_y = (client_y * YAAT_BACKBUFFER_HEIGHT) / client_height;
-    g_target_x = yaat_clamp_int(g_target_x, 0, YAAT_BACKBUFFER_WIDTH - 1);
-    g_target_y = yaat_clamp_int(g_target_y, 0, YAAT_PLAYFIELD_HEIGHT - 1);
+    int backbuffer_x;
+    int backbuffer_y;
+
+    if (!yaat_client_to_backbuffer(window, client_x, client_y,
+                                   &backbuffer_x, &backbuffer_y)) return;
+    g_target_x = backbuffer_x;
+    g_target_y = yaat_clamp_int(backbuffer_y, 0, YAAT_PLAYFIELD_HEIGHT - 1);
     yaat_click_game(g_target_x, g_target_y);
+}
+
+static void yaat_update_cursor_from_client(HWND window, int client_x, int client_y)
+{
+    int backbuffer_x;
+    int backbuffer_y;
+    YaatRuntimeHotspot *hotspot;
+    const char *cursor_state;
+    LPCSTR win32_cursor;
+
+    if (!yaat_client_to_backbuffer(window, client_x, client_y,
+                                   &backbuffer_x, &backbuffer_y)) return;
+    if (g_runtime_load.ok) {
+        g_target_x = backbuffer_x;
+        g_target_y = yaat_clamp_int(backbuffer_y, 0, YAAT_BACKBUFFER_HEIGHT - 1);
+    }
+
+    hotspot = g_runtime_load.ok ? yaat_runtime_hotspot_at(backbuffer_x, backbuffer_y) : 0;
+    cursor_state = hotspot != 0 ? hotspot->cursor : "arrow";
+    yaat_copy(g_cursor_state, sizeof(g_cursor_state), cursor_state,
+              strlen(cursor_state));
+
+    win32_cursor = strcmp(g_cursor_state, "use") == 0 ? IDC_HAND : IDC_ARROW;
+    SetCursor(LoadCursorA(0, win32_cursor));
+    InvalidateRect(window, 0, FALSE);
 }
 
 static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
@@ -637,12 +784,18 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         ReleaseDC(window, dc);
         if (!g_renderer_ready) return -1;
         yaat_load_demo();
+        yaat_load_runtime_hotspots();
         SetTimer(window, YAAT_FRAME_TIMER_ID, YAAT_FRAME_TIMER_MS, 0);
         return 0;
     }
+    case WM_MOUSEMOVE:
+        yaat_update_cursor_from_client(window, (int)(short)LOWORD(l_param),
+                                       (int)(short)HIWORD(l_param));
+        return 0;
     case WM_LBUTTONDOWN:
         if (g_dialogue_visible) g_dialogue_visible = 0;
-        else yaat_set_target_from_client(window, LOWORD(l_param), HIWORD(l_param));
+        else yaat_set_target_from_client(window, (int)(short)LOWORD(l_param),
+                                         (int)(short)HIWORD(l_param));
         InvalidateRect(window, 0, FALSE); return 0;
     case WM_TIMER:
         if (w_param == YAAT_FRAME_TIMER_ID) { yaat_update_player(); InvalidateRect(window, 0, FALSE); return 0; }
