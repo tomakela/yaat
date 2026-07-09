@@ -4,10 +4,11 @@ YAAT is an experimental Windows 95-friendly point-and-click adventure engine pro
 
 ## Current repository contents
 
-- `src/`: engine-side C experiments, including the script tokenizer and Win32/GDI support code.
+- `src/`: engine-side C experiments, including the script tokenizer, runtime asset-loading scaffolding, and Win32/GDI support code.
 - `game/`: a placeholder point-and-click demo asset tree using INI metadata, `.yaat` scripts, and stub runtime assets for validation.
 - `tools/asset_validate/`: a standalone development-time checker for the loose `game/` asset tree.
 - `tools/win95_smoke/`: a minimal Win95-compatible Win32 GUI smoke test source.
+- `scripts/`: Windows batch files for Open Watcom engine and smoke-test builds, plus fallback compiler experiments.
 - `docs/`: project documentation for assets, scripting, runtime planning, toolchains, PNG support, and Win95 API policy.
 
 ## Documentation
@@ -20,45 +21,70 @@ YAAT is an experimental Windows 95-friendly point-and-click adventure engine pro
 - [PNG library suitability](docs/png-library-suitability.md)
 - [Win95 API allowlist](docs/win95-api-allowlist.md)
 
+## Open Watcom installation baseline
+
+Open Watcom C/C++ is the primary compiler baseline for YAAT's Windows 95 builds. Use the 32-bit Open Watcom toolchain, install the Win32 headers/libraries, and initialize the environment before compiling.
+
+Typical Windows setup:
+
+1. Install Open Watcom C/C++ 2.x or a validated 1.9-compatible release with the 32-bit Windows target selected.
+2. Open a command prompt.
+3. Run the Open Watcom environment script, for example:
+
+```bat
+C:\WATCOM\OWSETENV.BAT
+```
+
+4. Confirm that the compiler and linker are visible:
+
+```bat
+wcl386 -?
+wlink ?
+```
+
+The required environment variables are normally configured by `OWSETENV.BAT`: `WATCOM`, `PATH`, `INCLUDE`, and `LIB`. If `wcl386` cannot find `windows.h`, `user32.lib`, or `gdi32.lib`, rerun the environment script or check that the Win32 target components were installed.
+
 ## Building the Win32 engine shell
 
-The current engine shell is a Win32/GDI GUI program. It opens a basic YAAT window; the full game runtime is not wired into the message loop yet.
+The current engine shell is a Win32/GDI GUI program. It opens a basic YAAT window; the full game runtime is still being wired into the message loop.
 
-The primary Windows 95 compatibility baseline is the original MinGW.org 32-bit toolchain that targets `msvcrt.dll` (commonly GCC 3.x/4.x-era MinGW.org distributions). Do not assume modern MinGW-w64 builds are Windows 95-compatible: verify that the generated executable is PE-i386, links only Win95-era system imports, and does not introduce NT-only startup/runtime imports. Use `-march=i386` for conservative CPU compatibility and `-static-libgcc` when supported so the executable does not require a separate `libgcc` DLL. The executable may still depend on `MSVCRT.DLL`, which must be present on the target Windows 95 system.
-
-From a Windows shell with `mingw32-gcc` on `PATH`, either run the helper script:
+From a Windows shell with Open Watcom configured, run:
 
 ```bat
-scripts\build_engine_mingw.bat
+scripts\build_engine_openwatcom.bat
 ```
 
-or compile directly:
+The script compiles these engine sources:
+
+```text
+src\main_win32.c
+src\platform\win32\gdi_renderer.c
+src\script_tokenizer.c
+src\runtime\asset_loader.c
+```
+
+and links them as a Windows 95 GUI executable with `user32.lib` and `gdi32.lib`:
 
 ```bat
-if not exist build mkdir build
-mingw32-gcc -I src -mwindows -march=i386 -Os -static-libgcc -o build\yaat_engine_mingw.exe src\main_win32.c src\platform\win32\gdi_renderer.c -luser32 -lgdi32
+wcl386 -q -bt=nt -i=src -os -w3 -l=win95 -fe=build\yaat_engine_openwatcom.exe src\main_win32.c src\platform\win32\gdi_renderer.c src\script_tokenizer.c src\runtime\asset_loader.c user32.lib gdi32.lib
 ```
 
-On a Unix-like host with a compatible MinGW cross-compiler named `mingw32-gcc`, the repository `Makefile` uses the same compiler shape:
+On a host where GNU Make can invoke `wcl386`, the repository `Makefile` uses the same Open Watcom compiler shape:
 
 ```sh
 make
 ```
 
-Override `CC` if your validated Win95-capable cross-compiler has a different name:
+The make target writes `build/yaat.exe`. Override `WCL386`, `WATCOM_CFLAGS`, `WATCOM_LDFLAGS`, or `WATCOM_LIBS` only after validating that the resulting binary remains Windows 95-compatible.
 
-```sh
-make CC=i386-mingw32-gcc
-```
-
-For alternate compilers and smoke-test commands, see [Toolchain compatibility](docs/toolchain-compatibility.md).
+For fallback compiler experiments and smoke-test commands, see [Toolchain compatibility](docs/toolchain-compatibility.md).
 
 ## Running the Win32 engine shell
 
 After building, run the generated executable on Windows:
 
 ```bat
-build\yaat_engine_mingw.exe
+build\yaat_engine_openwatcom.exe
 ```
 
 If built with `make`, the default output name is:
@@ -67,7 +93,7 @@ If built with `make`, the default output name is:
 build\yaat.exe
 ```
 
-For Windows 95 testing, copy the executable to the target machine or VM together with any required runtime DLLs from the validated toolchain. With the MinGW.org baseline and `-static-libgcc`, expect Windows system DLLs plus `MSVCRT.DLL`; inspect imports with `dumpbin /imports`, `objdump -p`, or Dependency Walker before treating a build as Win95-compatible.
+For Windows 95 testing, copy the executable to the target machine or VM. The Open Watcom baseline should statically link the Watcom runtime for this project shape, leaving only Win95-era system DLL imports such as `KERNEL32.DLL`, `USER32.DLL`, and `GDI32.DLL`. Inspect imports with `wdis`, `dumpbin /imports`, `objdump -p`, or Dependency Walker before treating a build as Win95-compatible.
 
 ## Quick checks
 

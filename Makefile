@@ -1,19 +1,18 @@
-# YAAT Win32 build manifest
+# YAAT Open Watcom Win32 build manifest
 #
-# This manifest is intended to preserve the Windows 95-oriented compiler shape
-# documented in docs/toolchain-compatibility.md: build a PE-i386 Win32 GUI
-# executable from ANSI Win32 sources and link only Win95-era GUI import libs.
-# It defaults to the old MinGW.org-style command from that document, but callers
-# may override CC, CFLAGS, LDFLAGS, EXE, or ENGINE_RUNTIME_SOURCES for another
-# validated Win95-capable compiler.
+# This manifest preserves the Windows 95-oriented compiler shape documented in
+# docs/toolchain-compatibility.md: build a PE-i386 Win32 GUI executable from ANSI
+# Win32 sources and link only Win95-era GUI import libs. Open Watcom C/C++ is the
+# primary baseline because it can produce Windows 95 GUI binaries with a static
+# Watcom runtime and without a dependency on MSVCRT.DLL.
 
 BUILD_DIR = build
 EXE = $(BUILD_DIR)/yaat.exe
 
-CC = mingw32-gcc
-CFLAGS = -I src -march=i386 -Os
-LDFLAGS = -mwindows -static-libgcc
-LDLIBS = -luser32 -lgdi32
+WCL386 = wcl386
+WATCOM_CFLAGS = -q -bt=nt -i=src -os -w3
+WATCOM_LDFLAGS = -l=win95
+WATCOM_LIBS = user32.lib gdi32.lib
 
 WIN32_SOURCES = \
 	src/main_win32.c \
@@ -32,7 +31,7 @@ all: $(EXE)
 
 $(EXE): $(SOURCES)
 	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(SOURCES) $(LDLIBS)
+	$(WCL386) $(WATCOM_CFLAGS) $(WATCOM_LDFLAGS) -fe=$@ $(SOURCES) $(WATCOM_LIBS)
 
 print-sources:
 	@printf '%s\n' $(SOURCES)
