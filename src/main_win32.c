@@ -111,6 +111,13 @@ static YaatRuntimeLoadResult g_runtime_load;
 static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
 static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
+static unsigned long *g_background_pixels;
+static int g_background_width;
+static int g_background_height;
+static char g_background_path[YAAT_ASSET_MAX_PATH * 2];
+
+static void yaat_runtime_join_path(char *dst, size_t dst_size,
+                                   const char *left, const char *right);
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -218,6 +225,246 @@ static unsigned long yaat_hash_color(const char *text, unsigned long fallback)
     return 0x00404040UL | (hash & 0x007f7f7fUL);
 }
 
+static unsigned short yaat_read_le16(const unsigned char *data)
+{
+    return (unsigned short)(data[0] | (data[1] << 8));
+}
+
+static unsigned long yaat_read_le32(const unsigned char *data)
+{
+    return ((unsigned long)data[0]) |
+           ((unsigned long)data[1] << 8) |
+           ((unsigned long)data[2] << 16) |
+           ((unsigned long)data[3] << 24);
+}
+
+static long yaat_read_le32_signed(const unsigned char *data)
+{
+    return (long)yaat_read_le32(data);
+}
+
+static void yaat_unload_background(void)
+{
+    if (g_background_pixels != 0) {
+        free(g_background_pixels);
+    }
+    g_background_pixels = 0;
+    g_background_width = 0;
+    g_background_height = 0;
+    g_background_path[0] = '\0';
+}
+
+static int yaat_load_bmp_background(const char *path)
+{
+    FILE *file;
+    unsigned char file_header[14];
+    unsigned char info_header[40];
+    unsigned long pixel_offset;
+    long bmp_width;
+    long bmp_height;
+    int top_down;
+    unsigned short planes;
+    unsigned short bits_per_pixel;
+    unsigned long compression;
+    unsigned long row_stride;
+    unsigned long palette[256];
+    unsigned long palette_entries;
+    unsigned char *row;
+    unsigned long *pixels;
+    int x;
+    int y;
+
+    if (path == 0 || path[0] == '\0') {
+        return 0;
+    }
+    if (strcmp(g_background_path, path) == 0 && g_background_pixels != 0) {
+        return 1;
+    }
+
+    file = fopen(path, "rb");
+    if (file == 0) {
+        yaat_unload_background();
+        yaat_copy(g_background_path, sizeof(g_background_path), path,
+                  strlen(path));
+        return 0;
+    }
+
+    if (fread(file_header, 1, sizeof(file_header), file) !=
+        sizeof(file_header) ||
+        fread(info_header, 1, sizeof(info_header), file) !=
+        sizeof(info_header)) {
+        fclose(file);
+        yaat_unload_background();
+        return 0;
+    }
+
+    if (file_header[0] != 'B' || file_header[1] != 'M' ||
+        yaat_read_le32(info_header) < 40) {
+        fclose(file);
+        yaat_unload_background();
+        return 0;
+    }
+
+    pixel_offset = yaat_read_le32(file_header + 10);
+    bmp_width = yaat_read_le32_signed(info_header + 4);
+    bmp_height = yaat_read_le32_signed(info_header + 8);
+    planes = yaat_read_le16(info_header + 12);
+    bits_per_pixel = yaat_read_le16(info_header + 14);
+    compression = yaat_read_le32(info_header + 16);
+
+    top_down = 0;
+    if (bmp_height < 0) {
+        top_down = 1;
+        bmp_height = -bmp_height;
+    }
+
+    if (bmp_width <= 0 || bmp_height <= 0 || planes != 1 ||
+        compression != BI_RGB ||
+        (bits_per_pixel != 8 && bits_per_pixel != 24 &&
+         bits_per_pixel != 32)) {
+        fclose(file);
+        yaat_unload_background();
+        return 0;
+    }
+
+    if (bits_per_pixel == 8) {
+        unsigned char palette_color[4];
+        unsigned long i;
+
+        if (pixel_offset < 54) {
+            fclose(file);
+            yaat_unload_background();
+            return 0;
+        }
+        palette_entries = (pixel_offset - 54) / 4;
+        if (palette_entries > 256) {
+            palette_entries = 256;
+        }
+        if (palette_entries == 0 || fseek(file, 54, SEEK_SET) != 0) {
+            fclose(file);
+            yaat_unload_background();
+            return 0;
+        }
+        for (i = 0; i < palette_entries; ++i) {
+            if (fread(palette_color, 1, sizeof(palette_color), file) !=
+                sizeof(palette_color)) {
+                fclose(file);
+                yaat_unload_background();
+                return 0;
+            }
+            palette[i] = ((unsigned long)palette_color[0]) |
+                         ((unsigned long)palette_color[1] << 8) |
+                         ((unsigned long)palette_color[2] << 16);
+        }
+    } else {
+        palette_entries = 0;
+    }
+
+    row_stride = ((((unsigned long)bmp_width * bits_per_pixel) + 31) / 32) * 4;
+    row = (unsigned char *)malloc(row_stride);
+    pixels = (unsigned long *)malloc((size_t)bmp_width * (size_t)bmp_height *
+                                     sizeof(unsigned long));
+    if (row == 0 || pixels == 0) {
+        if (row != 0) {
+            free(row);
+        }
+        if (pixels != 0) {
+            free(pixels);
+        }
+        fclose(file);
+        yaat_unload_background();
+        return 0;
+    }
+
+    if (fseek(file, (long)pixel_offset, SEEK_SET) != 0) {
+        free(row);
+        free(pixels);
+        fclose(file);
+        yaat_unload_background();
+        return 0;
+    }
+
+    for (y = 0; y < bmp_height; ++y) {
+        int dst_y;
+
+        if (fread(row, 1, row_stride, file) != row_stride) {
+            free(row);
+            free(pixels);
+            fclose(file);
+            yaat_unload_background();
+            return 0;
+        }
+
+        dst_y = top_down ? y : (int)bmp_height - 1 - y;
+        for (x = 0; x < bmp_width; ++x) {
+            unsigned char *src;
+            unsigned long b;
+            unsigned long g;
+            unsigned long r;
+
+            src = row + ((bits_per_pixel / 8) * x);
+            if (bits_per_pixel == 8) {
+                if (src[0] >= palette_entries) {
+                    pixels[(dst_y * (int)bmp_width) + x] = 0;
+                } else {
+                    pixels[(dst_y * (int)bmp_width) + x] = palette[src[0]];
+                }
+            } else {
+                b = src[0];
+                g = src[1];
+                r = src[2];
+                pixels[(dst_y * (int)bmp_width) + x] =
+                    b | (g << 8) | (r << 16);
+            }
+        }
+    }
+
+    free(row);
+    fclose(file);
+    yaat_unload_background();
+    g_background_pixels = pixels;
+    g_background_width = (int)bmp_width;
+    g_background_height = (int)bmp_height;
+    yaat_copy(g_background_path, sizeof(g_background_path), path, strlen(path));
+    return 1;
+}
+
+static int yaat_draw_runtime_background(void)
+{
+    char path[YAAT_ASSET_MAX_PATH * 2];
+    int copy_width;
+    int copy_height;
+    int y;
+
+    if (g_runtime_load.room.room_path[0] == '\0' ||
+        g_runtime_load.room.background[0] == '\0') {
+        return 0;
+    }
+
+    yaat_runtime_join_path(path, sizeof(path), g_runtime_load.room.room_path,
+                           g_runtime_load.room.background);
+    if (!yaat_load_bmp_background(path)) {
+        return 0;
+    }
+
+    copy_width = g_background_width;
+    copy_height = g_background_height;
+    if (copy_width > g_renderer.width) {
+        copy_width = g_renderer.width;
+    }
+    if (copy_height > g_renderer.height) {
+        copy_height = g_renderer.height;
+    }
+
+    for (y = 0; y < copy_height; ++y) {
+        memcpy((unsigned char *)g_renderer.pixels + (y * g_renderer.pitch),
+               g_background_pixels + (y * g_background_width),
+               (size_t)copy_width * sizeof(unsigned long));
+    }
+
+    return 1;
+}
+
 static void yaat_draw_player_placeholder(void)
 {
     int shadow_x;
@@ -248,21 +495,25 @@ static void yaat_draw_runtime_room(void)
 {
     int i;
     int floor_y;
+    int background_drawn;
     unsigned long background_color;
 
     background_color = yaat_hash_color(g_runtime_load.room.background,
                                         0x00d8c7a3UL);
     yaat_gdi_renderer_clear(&g_renderer, background_color);
+    background_drawn = yaat_draw_runtime_background();
 
-    floor_y = YAAT_BACKBUFFER_HEIGHT - 44;
-    if (g_runtime_load.room.height > 0) {
-        floor_y = (YAAT_BACKBUFFER_HEIGHT * 3) / 4;
+    if (!background_drawn) {
+        floor_y = YAAT_BACKBUFFER_HEIGHT - 44;
+        if (g_runtime_load.room.height > 0) {
+            floor_y = (YAAT_BACKBUFFER_HEIGHT * 3) / 4;
+        }
+        yaat_draw_rect(&g_renderer, 0, floor_y, YAAT_BACKBUFFER_WIDTH,
+                       YAAT_BACKBUFFER_HEIGHT - floor_y, 0x005f6f4aUL);
+
+        yaat_draw_rect(&g_renderer, 12, 12, 128, 22, 0x00282828UL);
+        yaat_draw_rect(&g_renderer, 14, 14, 124, 18, 0x00d8d0b8UL);
     }
-    yaat_draw_rect(&g_renderer, 0, floor_y, YAAT_BACKBUFFER_WIDTH,
-                   YAAT_BACKBUFFER_HEIGHT - floor_y, 0x005f6f4aUL);
-
-    yaat_draw_rect(&g_renderer, 12, 12, 128, 22, 0x00282828UL);
-    yaat_draw_rect(&g_renderer, 14, 14, 124, 18, 0x00d8d0b8UL);
 
     for (i = 0; i < g_runtime_load.room.hotspot_count; ++i) {
         YaatRuntimeHotspot *hotspot;
