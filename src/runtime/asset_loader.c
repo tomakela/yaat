@@ -205,6 +205,32 @@ static void yaat_load_room_ini(const char *path, YaatRuntimeRoom *room,
     }
 }
 
+
+static void yaat_parse_rect(const char *value, int *x, int *y, int *width,
+                            int *height)
+{
+    int parsed_x;
+    int parsed_y;
+    int parsed_width;
+    int parsed_height;
+
+    if (value == 0) {
+        return;
+    }
+
+    parsed_x = 0;
+    parsed_y = 0;
+    parsed_width = 0;
+    parsed_height = 0;
+    if (sscanf(value, "%d,%d,%d,%d", &parsed_x, &parsed_y, &parsed_width,
+               &parsed_height) == 4) {
+        *x = parsed_x;
+        *y = parsed_y;
+        *width = parsed_width;
+        *height = parsed_height;
+    }
+}
+
 static void yaat_load_room_objects(const char *path, YaatRuntimeRoom *room)
 {
     FILE *file;
@@ -265,6 +291,62 @@ static void yaat_load_room_objects(const char *path, YaatRuntimeRoom *room)
     fclose(file);
 }
 
+static void yaat_load_room_hotspots(const char *path, YaatRuntimeRoom *room)
+{
+    FILE *file;
+    char line[YAAT_LINE_MAX];
+    YaatRuntimeHotspot *hotspot;
+
+    file = fopen(path, "r");
+    if (file == 0) {
+        return;
+    }
+
+    hotspot = 0;
+    while (fgets(line, sizeof(line), file) != 0) {
+        char *text;
+        char *equals;
+
+        text = yaat_trim(line);
+        if (text[0] == '\0' || text[0] == ';' || text[0] == '#') {
+            continue;
+        }
+        if (text[0] == '[') {
+            char *close = strchr(text, ']');
+            hotspot = 0;
+            if (close != 0 && room->hotspot_count < YAAT_ASSET_MAX_HOTSPOTS) {
+                *close = '\0';
+                hotspot = &room->hotspots[room->hotspot_count++];
+                memset(hotspot, 0, sizeof(*hotspot));
+                yaat_copy_string(hotspot->id, sizeof(hotspot->id), text + 1);
+            }
+            continue;
+        }
+        if (hotspot == 0) {
+            continue;
+        }
+        equals = strchr(text, '=');
+        if (equals == 0) {
+            continue;
+        }
+        *equals = '\0';
+        text = yaat_trim(text);
+        ++equals;
+        if (strcmp(text, "name") == 0) {
+            yaat_copy_string(hotspot->name, sizeof(hotspot->name), yaat_trim(equals));
+        } else if (strcmp(text, "rect") == 0) {
+            yaat_parse_rect(yaat_trim(equals), &hotspot->x, &hotspot->y,
+                            &hotspot->width, &hotspot->height);
+        } else if (strcmp(text, "cursor") == 0) {
+            yaat_copy_string(hotspot->cursor, sizeof(hotspot->cursor), yaat_trim(equals));
+        } else if (strcmp(text, "script_event") == 0) {
+            yaat_copy_string(hotspot->script_event, sizeof(hotspot->script_event),
+                             yaat_trim(equals));
+        }
+    }
+    fclose(file);
+}
+
 void yaat_runtime_load_start_room(const char *game_ini_path,
                                   YaatRuntimeLoadResult *result)
 {
@@ -274,6 +356,7 @@ void yaat_runtime_load_start_room(const char *game_ini_path,
     char room_dir[YAAT_ASSET_MAX_PATH];
     char room_ini[YAAT_ASSET_MAX_PATH];
     char objects_ini[YAAT_ASSET_MAX_PATH];
+    char hotspots_ini[YAAT_ASSET_MAX_PATH];
     char *slash;
     char *backslash;
 
@@ -304,6 +387,7 @@ void yaat_runtime_load_start_room(const char *game_ini_path,
     yaat_join_path(room_dir, sizeof(room_dir), rooms_root, config.first_room);
     yaat_join_path(room_ini, sizeof(room_ini), room_dir, "room.ini");
     yaat_join_path(objects_ini, sizeof(objects_ini), room_dir, "objects.ini");
+    yaat_join_path(hotspots_ini, sizeof(hotspots_ini), room_dir, "hotspots.ini");
 
     yaat_copy_string(result->room.room_path, sizeof(result->room.room_path), room_dir);
     yaat_load_room_ini(room_ini, &result->room, result);
@@ -311,4 +395,5 @@ void yaat_runtime_load_start_room(const char *game_ini_path,
         return;
     }
     yaat_load_room_objects(objects_ini, &result->room);
+    yaat_load_room_hotspots(hotspots_ini, &result->room);
 }
