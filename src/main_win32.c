@@ -1346,6 +1346,47 @@ static void yaat_calculate_viewport(int client_width, int client_height,
     viewport->y = (client_height - scaled_height) / 2;
 }
 
+static void yaat_fill_letterbox_bars(HDC dc, const RECT *client_rect,
+                                     const YaatViewport *viewport)
+{
+    HBRUSH black_brush;
+    RECT bar_rect;
+
+    if (dc == 0 || client_rect == 0 || viewport == 0) return;
+
+    black_brush = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    if (black_brush == 0) return;
+
+    if (viewport->y > client_rect->top) {
+        bar_rect.left = client_rect->left;
+        bar_rect.top = client_rect->top;
+        bar_rect.right = client_rect->right;
+        bar_rect.bottom = viewport->y;
+        FillRect(dc, &bar_rect, black_brush);
+    }
+    if (viewport->y + viewport->height < client_rect->bottom) {
+        bar_rect.left = client_rect->left;
+        bar_rect.top = viewport->y + viewport->height;
+        bar_rect.right = client_rect->right;
+        bar_rect.bottom = client_rect->bottom;
+        FillRect(dc, &bar_rect, black_brush);
+    }
+    if (viewport->x > client_rect->left) {
+        bar_rect.left = client_rect->left;
+        bar_rect.top = viewport->y;
+        bar_rect.right = viewport->x;
+        bar_rect.bottom = viewport->y + viewport->height;
+        FillRect(dc, &bar_rect, black_brush);
+    }
+    if (viewport->x + viewport->width < client_rect->right) {
+        bar_rect.left = viewport->x + viewport->width;
+        bar_rect.top = viewport->y;
+        bar_rect.right = client_rect->right;
+        bar_rect.bottom = viewport->y + viewport->height;
+        FillRect(dc, &bar_rect, black_brush);
+    }
+}
+
 static void yaat_toggle_fullscreen(HWND window)
 {
     if (!g_fullscreen) {
@@ -1366,7 +1407,7 @@ static void yaat_toggle_fullscreen(HWND window)
                      SWP_FRAMECHANGED | SWP_SHOWWINDOW);
         g_fullscreen = 0;
     }
-    InvalidateRect(window, 0, TRUE);
+    InvalidateRect(window, 0, FALSE);
 }
 
 static int yaat_client_to_backbuffer(HWND window, int client_x, int client_y,
@@ -1463,14 +1504,18 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
     case WM_SETCURSOR:
         SetCursor(0);
         return TRUE;
+    case WM_ERASEBKGND:
+        return TRUE;
     case WM_SYSKEYDOWN:
         if (w_param == VK_RETURN && (HIWORD(l_param) & KF_ALTDOWN)) {
+            if ((l_param & 0x40000000L) != 0) return 0;
             yaat_toggle_fullscreen(window);
             return 0;
         }
         break;
     case WM_KEYDOWN:
         if (w_param == VK_RETURN && (GetKeyState(VK_MENU) & 0x8000)) {
+            if ((l_param & 0x40000000L) != 0) return 0;
             yaat_toggle_fullscreen(window);
             return 0;
         }
@@ -1490,20 +1535,19 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         if (w_param == YAAT_FRAME_TIMER_ID) { yaat_update_player(); InvalidateRect(window, 0, FALSE); return 0; }
         break;
     case WM_PAINT: {
-        PAINTSTRUCT paint; HDC dc; RECT client_rect; YaatViewport viewport; HBRUSH black_brush;
+        PAINTSTRUCT paint; HDC dc; RECT client_rect; YaatViewport viewport;
         dc = BeginPaint(window, &paint);
         if (g_renderer_ready && GetClientRect(window, &client_rect) != 0) {
             yaat_calculate_viewport(client_rect.right - client_rect.left,
                                     client_rect.bottom - client_rect.top,
                                     &viewport);
-            black_brush = (HBRUSH)GetStockObject(BLACK_BRUSH);
-            FillRect(dc, &client_rect, black_brush);
             if (viewport.width > 0 && viewport.height > 0) {
                 yaat_render_scene();
                 yaat_gdi_renderer_present_stretched(&g_renderer, dc,
                                                     viewport.x, viewport.y,
                                                     viewport.width,
                                                     viewport.height);
+                yaat_fill_letterbox_bars(dc, &client_rect, &viewport);
             }
         }
         EndPaint(window, &paint); return 0;
@@ -1529,7 +1573,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
 
     ZeroMemory(&window_class, sizeof(window_class));
     window_class.cbSize = sizeof(window_class); window_class.style = CS_HREDRAW | CS_VREDRAW; window_class.lpfnWndProc = yaat_window_proc;
-    window_class.hInstance = instance; window_class.hCursor = LoadCursorA(0, IDC_ARROW); window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1); window_class.lpszClassName = YAAT_WINDOW_CLASS_NAME;
+    window_class.hInstance = instance; window_class.hCursor = LoadCursorA(0, IDC_ARROW); window_class.hbrBackground = 0; window_class.lpszClassName = YAAT_WINDOW_CLASS_NAME;
     if (RegisterClassExA(&window_class) == 0) return 1;
     window = CreateWindowExA(0, YAAT_WINDOW_CLASS_NAME, YAAT_WINDOW_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 640, 480, 0, 0, instance, 0);
     if (window == 0) return 1;
