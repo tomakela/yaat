@@ -93,6 +93,7 @@ static int g_player_x = YAAT_BACKBUFFER_WIDTH / 2;
 static int g_player_y = YAAT_PLAYFIELD_HEIGHT / 2;
 static int g_target_x = YAAT_BACKBUFFER_WIDTH / 2;
 static int g_target_y = YAAT_PLAYFIELD_HEIGHT / 2;
+static int g_player_facing_right = 1;
 static int g_cursor_x = YAAT_BACKBUFFER_WIDTH / 2;
 static int g_cursor_y = YAAT_PLAYFIELD_HEIGHT / 2;
 static YaatRoom g_rooms[YAAT_MAX_ROOMS];
@@ -548,8 +549,18 @@ static void yaat_draw_player(void)
     int draw_x;
     int draw_y;
 
-    sprite_name = (g_player_x != g_target_x || g_player_y != g_target_y) ?
-                  "player_walk.bmp" : "player_idle.bmp";
+    if (g_player_x != g_target_x || g_player_y != g_target_y) {
+        if (g_target_x < g_player_x) {
+            sprite_name = "player_walk_left.bmp";
+        } else if (g_target_x > g_player_x) {
+            sprite_name = "player_walk_right.bmp";
+        } else {
+            sprite_name = g_player_facing_right ?
+                          "player_walk_right.bmp" : "player_walk_left.bmp";
+        }
+    } else {
+        sprite_name = "player_idle.bmp";
+    }
     yaat_runtime_join_path(path, sizeof(path), "game/graphics/sprites",
                            sprite_name);
     if (!yaat_load_bmp(&g_player_bitmap, path)) {
@@ -1100,6 +1111,11 @@ static void yaat_update_player(void)
 
 static void yaat_nudge_player_target(int dx, int dy)
 {
+    if (dx < 0) {
+        g_player_facing_right = 0;
+    } else if (dx > 0) {
+        g_player_facing_right = 1;
+    }
     g_target_x = yaat_clamp_int(g_target_x + dx, YAAT_PLAYER_WIDTH / 2,
                                 YAAT_BACKBUFFER_WIDTH - (YAAT_PLAYER_WIDTH / 2));
     g_target_y = yaat_clamp_int(g_target_y + dy, YAAT_PLAYER_HEIGHT,
@@ -1319,6 +1335,11 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y)
                                    &backbuffer_x, &backbuffer_y)) return;
     g_cursor_x = backbuffer_x;
     g_cursor_y = backbuffer_y;
+    if (backbuffer_x < g_player_x) {
+        g_player_facing_right = 0;
+    } else if (backbuffer_x > g_player_x) {
+        g_player_facing_right = 1;
+    }
     g_target_x = backbuffer_x;
     g_target_y = yaat_clamp_int(backbuffer_y, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
     yaat_click_game(backbuffer_x, backbuffer_y);

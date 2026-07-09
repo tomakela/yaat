@@ -40,7 +40,8 @@ game/
       inventory_slot.bmp
     sprites/
       player_idle.bmp
-      player_walk.bmp
+      player_walk_left.bmp
+      player_walk_right.bmp
   audio/
     music/
       intro.mid
@@ -189,7 +190,7 @@ Example sprite metadata:
 ```ini
 ; graphics/sprites/player_walk.ini
 [walk_down]
-image=player_walk.bmp
+image=player_walk_right.bmp
 frames=0,0,32,48;32,0,32,48;64,0,32,48
 fps=8
 ```
