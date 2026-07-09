@@ -506,9 +506,9 @@ static void yaat_parse_script_text(const char *source)
         ScriptToken *token = yaat_advance_token(&cursor);
         if (token->type == SCRIPT_TOKEN_KEYWORD_VAR) {
             ScriptToken *name = yaat_advance_token(&cursor);
+            char var_name[32];
             yaat_match_token(&cursor, SCRIPT_TOKEN_EQUAL);
             token = yaat_advance_token(&cursor);
-            char var_name[32];
             yaat_copy(var_name, sizeof(var_name), name->lexeme, name->length);
             yaat_set_var(var_name, token->type == SCRIPT_TOKEN_KEYWORD_TRUE);
         } else if (token->type == SCRIPT_TOKEN_KEYWORD_ROOM) yaat_parse_room(&cursor);
