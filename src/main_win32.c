@@ -225,6 +225,32 @@ static unsigned long yaat_hash_color(const char *text, unsigned long fallback)
     return 0x00404040UL | (hash & 0x007f7f7fUL);
 }
 
+static void yaat_draw_player_placeholder(void)
+{
+    int shadow_x;
+    int shadow_y;
+    int body_x;
+    int body_y;
+
+    shadow_x = g_player_x - (YAAT_PLAYER_WIDTH / 2) - 2;
+    shadow_y = g_player_y + 7;
+    body_x = g_player_x - (YAAT_PLAYER_WIDTH / 2);
+    body_y = g_player_y - YAAT_PLAYER_HEIGHT;
+
+    yaat_draw_rect(&g_renderer, shadow_x, shadow_y, YAAT_PLAYER_WIDTH + 4, 5,
+                   0x00664f38UL);
+    yaat_draw_rect(&g_renderer, body_x + 4, body_y, 10, 10, 0x005a3a24UL);
+    yaat_draw_rect(&g_renderer, body_x + 3, body_y + 9, 12, 15,
+                   0x002f5f9eUL);
+    yaat_draw_rect(&g_renderer, body_x, body_y + 12, 4, 12, 0x00274774UL);
+    yaat_draw_rect(&g_renderer, body_x + 14, body_y + 12, 4, 12,
+                   0x00274774UL);
+    yaat_draw_rect(&g_renderer, body_x + 4, body_y + 24, 4, 10,
+                   0x001f2430UL);
+    yaat_draw_rect(&g_renderer, body_x + 10, body_y + 24, 4, 10,
+                   0x001f2430UL);
+}
+
 static void yaat_draw_runtime_room(void)
 {
     int i;
@@ -275,6 +301,8 @@ static void yaat_draw_runtime_room(void)
         yaat_draw_rect(&g_renderer, object->x + 1, object->y + 1,
                        object->width - 2, object->height - 2, object_color);
     }
+
+    yaat_draw_player_placeholder();
 }
 
 static char *yaat_trim_text(char *text)
@@ -664,7 +692,7 @@ static void yaat_load_demo(void)
 
 static void yaat_draw_script_scene(void)
 {
-    int shadow_x, shadow_y, body_x, body_y, i;
+    int i;
     YaatRoom *room = &g_rooms[g_current_room];
     yaat_gdi_renderer_clear(&g_renderer, room->color);
     yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT - 44, YAAT_BACKBUFFER_WIDTH, 44, 0x008a6f48UL);
@@ -676,15 +704,7 @@ static void yaat_draw_script_scene(void)
     }
     yaat_draw_rect(&g_renderer, g_target_x - 5, g_target_y - 1, 11, 3, 0x000f3c70UL);
     yaat_draw_rect(&g_renderer, g_target_x - 1, g_target_y - 5, 3, 11, 0x000f3c70UL);
-    shadow_x = g_player_x - (YAAT_PLAYER_WIDTH / 2) - 2; shadow_y = g_player_y + 7;
-    body_x = g_player_x - (YAAT_PLAYER_WIDTH / 2); body_y = g_player_y - YAAT_PLAYER_HEIGHT;
-    yaat_draw_rect(&g_renderer, shadow_x, shadow_y, YAAT_PLAYER_WIDTH + 4, 5, 0x00664f38UL);
-    yaat_draw_rect(&g_renderer, body_x + 4, body_y, 10, 10, 0x005a3a24UL);
-    yaat_draw_rect(&g_renderer, body_x + 3, body_y + 9, 12, 15, 0x002f5f9eUL);
-    yaat_draw_rect(&g_renderer, body_x, body_y + 12, 4, 12, 0x00274774UL);
-    yaat_draw_rect(&g_renderer, body_x + 14, body_y + 12, 4, 12, 0x00274774UL);
-    yaat_draw_rect(&g_renderer, body_x + 4, body_y + 24, 4, 10, 0x001f2430UL);
-    yaat_draw_rect(&g_renderer, body_x + 10, body_y + 24, 4, 10, 0x001f2430UL);
+    yaat_draw_player_placeholder();
     yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
     if (g_dialogue_visible) {
         yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_speaker, 0x00ffd060UL);
