@@ -597,10 +597,179 @@ static void yaat_update_player(void)
     g_player_x += dx; g_player_y += dy;
 }
 
+
+static void yaat_runtime_join_path(char *dst, size_t dst_size, const char *left, const char *right)
+{
+    size_t len;
+    yaat_copy(dst, dst_size, left != 0 ? left : "", strlen(left != 0 ? left : ""));
+    len = strlen(dst);
+    if (len > 0 && len < dst_size - 1 && dst[len - 1] != '/' && dst[len - 1] != '\\') {
+        dst[len++] = '/';
+        dst[len] = '\0';
+    }
+    if (len < dst_size - 1 && right != 0) {
+        strncat(dst, right, dst_size - 1 - len);
+    }
+}
+
+static void yaat_runtime_event_name(char *dst, size_t dst_size, const char *script_event)
+{
+    const char *name = script_event;
+    if (script_event != 0 && strncmp(script_event, "on_", 3) == 0) {
+        name = script_event + 3;
+    }
+    yaat_copy(dst, dst_size, name != 0 ? name : "click", strlen(name != 0 ? name : "click"));
+}
+
+static int yaat_runtime_room_script_index(void)
+{
+    int idx;
+    if (!g_runtime_load.ok) return g_current_room;
+    idx = yaat_room_index_by_id(g_runtime_load.room.id);
+    if (idx >= 0) return idx;
+    return g_current_room;
+}
+
+static void yaat_runtime_execute_entity_event(const char *entity_id, const char *script_event)
+{
+    char event_name[32];
+    YaatRoom *room;
+    YaatEntity *entity;
+    YaatEvent *event;
+
+    if (g_room_count <= 0) return;
+    room = &g_rooms[yaat_runtime_room_script_index()];
+    entity = yaat_entity_by_id(room, entity_id);
+    if (entity == 0) return;
+
+    yaat_runtime_event_name(event_name, sizeof(event_name), script_event);
+    event = yaat_find_event(entity->events, entity->event_count, event_name, 0);
+    if (event == 0 && strcmp(event_name, "click") != 0) {
+        event = yaat_find_event(entity->events, entity->event_count, "click", 0);
+    }
+    if (event == 0) event = yaat_find_event(entity->events, entity->event_count, "look", 0);
+    yaat_execute_event(event);
+}
+
+static int yaat_runtime_ini_hit(const char *path, int x, int y, char *id,
+                                size_t id_size, char *script_event,
+                                size_t script_event_size)
+{
+    FILE *file;
+    char line[256];
+    char current_id[YAAT_ASSET_MAX_NAME];
+    char current_event[32];
+    int rx, ry, rw, rh;
+    int has_rect;
+
+    file = fopen(path, "r");
+    if (file == 0) return 0;
+    current_id[0] = '\0';
+    current_event[0] = '\0';
+    rx = ry = rw = rh = has_rect = 0;
+
+#define YAAT_RUNTIME_CHECK_HIT() \
+    do { \
+        if (current_id[0] != '\0' && has_rect && x >= rx && y >= ry && \
+            x < rx + rw && y < ry + rh) { \
+            yaat_copy(id, id_size, current_id, strlen(current_id)); \
+            yaat_copy(script_event, script_event_size, \
+                      current_event[0] != '\0' ? current_event : "on_click", \
+                      strlen(current_event[0] != '\0' ? current_event : "on_click")); \
+            fclose(file); \
+            return 1; \
+        } \
+    } while (0)
+
+    while (fgets(line, sizeof(line), file) != 0) {
+        char *text = line;
+        char *equals;
+        while (*text == ' ' || *text == '\t' || *text == '\r' || *text == '\n') ++text;
+        if (*text == '\0' || *text == ';' || *text == '#') continue;
+        if (*text == '[') {
+            char *close;
+            YAAT_RUNTIME_CHECK_HIT();
+            close = strchr(text, ']');
+            if (close != 0) {
+                *close = '\0';
+                yaat_copy(current_id, sizeof(current_id), text + 1, strlen(text + 1));
+                current_event[0] = '\0';
+                rx = ry = rw = rh = has_rect = 0;
+            }
+            continue;
+        }
+        equals = strchr(text, '=');
+        if (equals == 0) continue;
+        *equals = '\0';
+        ++equals;
+        if (strncmp(text, "rect", 4) == 0) {
+            if (sscanf(equals, "%d,%d,%d,%d", &rx, &ry, &rw, &rh) == 4) has_rect = 1;
+        } else if (strncmp(text, "x", 1) == 0 && text[1] == '\0') {
+            rx = atoi(equals);
+            has_rect = rw > 0 && rh > 0;
+        } else if (strncmp(text, "y", 1) == 0 && text[1] == '\0') {
+            ry = atoi(equals);
+            has_rect = rw > 0 && rh > 0;
+        } else if (strncmp(text, "width", 5) == 0) {
+            rw = atoi(equals);
+            has_rect = rw > 0 && rh > 0;
+        } else if (strncmp(text, "height", 6) == 0) {
+            rh = atoi(equals);
+            has_rect = rw > 0 && rh > 0;
+        } else if (strncmp(text, "script_event", 12) == 0) {
+            char *end;
+            while (*equals == ' ' || *equals == '\t') ++equals;
+            end = equals + strlen(equals);
+            while (end > equals && (*(end - 1) == '\r' || *(end - 1) == '\n' || *(end - 1) == ' ' || *(end - 1) == '\t')) --end;
+            *end = '\0';
+            yaat_copy(current_event, sizeof(current_event), equals, strlen(equals));
+        }
+    }
+    YAAT_RUNTIME_CHECK_HIT();
+    fclose(file);
+    return 0;
+#undef YAAT_RUNTIME_CHECK_HIT
+}
+
+static int yaat_runtime_click_game(int x, int y)
+{
+    int i;
+    char id[YAAT_ASSET_MAX_NAME];
+    char event_name[32];
+    char path[YAAT_ASSET_MAX_PATH];
+    YaatRuntimeRoom *room = &g_runtime_load.room;
+
+    for (i = room->object_count - 1; i >= 0; --i) {
+        YaatRuntimeObject *object = &room->objects[i];
+        if (object->visible && x >= object->x && y >= object->y &&
+            x < object->x + object->width && y < object->y + object->height) {
+            yaat_runtime_join_path(path, sizeof(path), room->room_path, "objects.ini");
+            if (!yaat_runtime_ini_hit(path, x, y, id, sizeof(id), event_name, sizeof(event_name))) {
+                yaat_copy(id, sizeof(id), object->id, strlen(object->id));
+                yaat_copy(event_name, sizeof(event_name), "on_click", strlen("on_click"));
+            }
+            yaat_runtime_execute_entity_event(id, event_name);
+            return 1;
+        }
+    }
+
+    yaat_runtime_join_path(path, sizeof(path), room->room_path, "hotspots.ini");
+    if (yaat_runtime_ini_hit(path, x, y, id, sizeof(id), event_name, sizeof(event_name))) {
+        yaat_runtime_execute_entity_event(id, event_name);
+        return 1;
+    }
+    return 0;
+}
+
 static void yaat_click_game(int x, int y)
 {
     int i;
-    YaatRoom *room = &g_rooms[g_current_room];
+    YaatRoom *room;
+    if (g_runtime_load.ok) {
+        yaat_runtime_click_game(x, y);
+        return;
+    }
+    room = &g_rooms[g_current_room];
     for (i = room->entity_count - 1; i >= 0; --i) {
         YaatEntity *e = &room->entities[i];
         if (e->visible && x >= e->x && y >= e->y && x < e->x + e->w && y < e->y + e->h) {
@@ -632,11 +801,16 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
     switch (message) {
     case WM_CREATE: {
         HDC dc = GetDC(window);
+        int runtime_room_index;
         if (dc == 0) return -1;
         g_renderer_ready = yaat_gdi_renderer_init(&g_renderer, dc, YAAT_BACKBUFFER_WIDTH, YAAT_BACKBUFFER_HEIGHT);
         ReleaseDC(window, dc);
         if (!g_renderer_ready) return -1;
         yaat_load_demo();
+        if (g_runtime_load.ok) {
+            runtime_room_index = yaat_room_index_by_id(g_runtime_load.room.id);
+            if (runtime_room_index >= 0) g_current_room = runtime_room_index;
+        }
         SetTimer(window, YAAT_FRAME_TIMER_ID, YAAT_FRAME_TIMER_MS, 0);
         return 0;
     }
