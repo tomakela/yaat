@@ -101,7 +101,6 @@ static int g_inventory_count;
 static char g_dialogue_speaker[32];
 static char g_dialogue_text[YAAT_TEXT_MAX];
 static int g_dialogue_visible;
-static int g_target_y = YAAT_BACKBUFFER_HEIGHT / 2;
 static YaatRuntimeLoadResult g_runtime_load;
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
@@ -175,6 +174,23 @@ static void yaat_draw_rect(YaatGdiRenderer *renderer, int x, int y,
 }
 
 static void yaat_draw_text_block(int x, int y, const char *text, unsigned long color)
+{
+    int i;
+    int cx = x;
+    int cy = y;
+
+    if (text == 0) return;
+    for (i = 0; text[i] != '\0' && cy < YAAT_BACKBUFFER_HEIGHT - 7; ++i) {
+        if (text[i] == '\n' || cx > YAAT_BACKBUFFER_WIDTH - 8) {
+            cx = x;
+            cy += 8;
+            if (text[i] == '\n') continue;
+        }
+        if (text[i] != ' ') yaat_draw_rect(&g_renderer, cx, cy, 5, 7, color);
+        cx += 6;
+    }
+}
+
 static unsigned long yaat_hash_color(const char *text, unsigned long fallback)
 {
     unsigned long hash;
@@ -242,17 +258,6 @@ static void yaat_draw_error_scene(void)
                    0x00802020UL);
 }
 
-static void yaat_render_scene(void)
-{
-    int i;
-    int cx = x;
-    int cy = y;
-    for (i = 0; text[i] != '\0' && cy < YAAT_BACKBUFFER_HEIGHT - 7; ++i) {
-        if (text[i] == '\n' || cx > YAAT_BACKBUFFER_WIDTH - 8) { cx = x; cy += 8; if (text[i] == '\n') continue; }
-        if (text[i] != ' ') yaat_draw_rect(&g_renderer, cx, cy, 5, 7, color);
-        cx += 6;
-    }
-}
 
 static int yaat_find_var(const char *name)
 {
@@ -267,12 +272,6 @@ static int yaat_get_var(const char *name)
     if (idx < 0) return 0;
     return g_vars[idx].bool_value;
 }
-    if (g_runtime_load.ok) {
-        yaat_draw_runtime_room();
-    } else {
-        yaat_draw_error_scene();
-    }
-
 static void yaat_set_var(const char *name, int value)
 {
     int idx = yaat_find_var(name);
@@ -546,7 +545,7 @@ static void yaat_load_demo(void)
     yaat_enter_room(0);
 }
 
-static void yaat_render_scene(void)
+static void yaat_draw_script_scene(void)
 {
     int shadow_x, shadow_y, body_x, body_y, i;
     YaatRoom *room = &g_rooms[g_current_room];
@@ -575,6 +574,17 @@ static void yaat_render_scene(void)
         yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_text, 0x00f0f0f0UL);
     } else {
         yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 12, "Click hotspots to play the demo", 0x00808080UL);
+    }
+}
+
+static void yaat_render_scene(void)
+{
+    if (g_runtime_load.ok) {
+        yaat_draw_runtime_room();
+    } else if (g_room_count > 0) {
+        yaat_draw_script_scene();
+    } else {
+        yaat_draw_error_scene();
     }
 }
 
@@ -656,8 +666,6 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command)
 {
-    WNDCLASSEXA window_class; HWND window; MSG message;
-    (void)previous_instance; (void)command_line;
     WNDCLASSEXA window_class;
     HWND window;
     MSG message;
