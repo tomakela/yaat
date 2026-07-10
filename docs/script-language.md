@@ -453,6 +453,22 @@ Example:
 play_sound "assets/sounds/unlock.wav"
 ```
 
+### shake
+
+Temporarily shake the in-room camera/render layer. The dialogue and UI layer remains steady.
+
+```text
+shake <duration_ms> <magnitude>
+```
+
+`duration_ms` is clamped by the runtime to a safe maximum and `magnitude` is clamped to keep offsets inside the backbuffer.
+
+Example:
+
+```text
+shake 350 6
+```
+
 ## Control flow
 
 The only control-flow construct in version 0 is `if` / `else`.

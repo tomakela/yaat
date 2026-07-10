@@ -69,6 +69,7 @@ room room001_intro {
     on use brass_key {
       if door_locked {
         play_sound "audio/sfx/door_unlock.wav"
+        shake 350 6
         set door_locked = false
         say player "The brass key turns, and the door unlocks."
       } else {
