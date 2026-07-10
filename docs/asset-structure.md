@@ -195,6 +195,29 @@ frames=0,0,32,48;32,0,32,48;64,0,32,48
 fps=8
 ```
 
+Room objects may also declare a simple data-driven animation directly in
+`objects.ini`. Keep `sprite=` as the first/resting frame so older tools and
+static-object rendering still have a stable fallback. Animated objects add an
+`animation` clip name, semicolon-separated `animation_frames`, and
+`animation_fps`:
+
+```ini
+; rooms/room002_cellar/objects.ini
+[flicker_lamp]
+name=Flickering Lamp
+sprite=objects/lamp_0.bmp
+animation=flicker
+animation_frames=objects/lamp_0.bmp;objects/lamp_1.bmp;objects/lamp_2.bmp
+animation_fps=6
+x=220
+y=74
+width=20
+height=38
+visible=true
+```
+
+If an object omits `animation_frames` or uses `animation_fps=0`, the runtime
+draws the static `sprite=` path exactly as before.
 ### Transparency metadata
 
 All non-background graphics can opt into the same transparency description. Backgrounds are always copied opaquely. If a field is omitted, runtime sprites default to `alpha` so 32-bit BMP alpha is preserved when present and older 8-bit/24-bit BMP files remain opaque.

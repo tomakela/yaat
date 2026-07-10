@@ -7,6 +7,7 @@
 #define YAAT_ASSET_MAX_NAME 64
 #define YAAT_ASSET_MAX_OBJECTS 32
 #define YAAT_ASSET_MAX_HOTSPOTS 32
+#define YAAT_ASSET_MAX_ANIMATION_FRAMES 16
 #define YAAT_ASSET_MAX_ANIMATIONS 8
 #define YAAT_ASSET_MAX_ANIMATION_FRAMES 8
 
@@ -34,6 +35,10 @@ typedef struct YaatRuntimeObject {
     char id[YAAT_ASSET_MAX_NAME];
     char name[YAAT_ASSET_MAX_NAME];
     char sprite[YAAT_ASSET_MAX_PATH];
+    char animation[YAAT_ASSET_MAX_NAME];
+    int animation_fps;
+    int animation_frame_count;
+    char animation_frames[YAAT_ASSET_MAX_ANIMATION_FRAMES][YAAT_ASSET_MAX_PATH];
     int x;
     int y;
     int width;
