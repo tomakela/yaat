@@ -46,8 +46,6 @@ static char g_dialogue_text[YAAT_TEXT_MAX];
 static int g_dialogue_visible;
 static YaatRuntimeLoadResult g_runtime_load;
 static YaatAssetStore g_asset_store;
-static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
-static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
 static int g_fullscreen;
 static RECT g_windowed_rect;
@@ -559,84 +557,13 @@ static void yaat_draw_cursor_placeholder(void)
     }
 }
 
-static char *yaat_trim_text(char *text)
-{
-    char *end;
-
-    while (*text != '\0' && (*text == ' ' || *text == '\t' || *text == '\r' || *text == '\n')) {
-        ++text;
-    }
-    end = text + strlen(text);
-    while (end > text && (*(end - 1) == ' ' || *(end - 1) == '\t' || *(end - 1) == '\r' || *(end - 1) == '\n')) {
-        --end;
-    }
-    *end = '\0';
-    return text;
-}
-
-static void yaat_load_runtime_hotspots(void)
-{
-    char path[YAAT_ASSET_MAX_PATH];
-    unsigned char *buffer;
-    size_t buffer_size;
-    char *line;
-    YaatRuntimeHotspot *hotspot;
-
-    g_runtime_hotspot_count = 0;
-    if (!g_runtime_load.ok || g_runtime_load.room.room_path[0] == '\0') return;
-
-    yaat_copy(path, sizeof(path),
-              yaat_runtime_logical_path(g_runtime_load.room.room_path),
-              strlen(yaat_runtime_logical_path(g_runtime_load.room.room_path)));
-    if (strlen(path) + strlen("/hotspots.ini") >= sizeof(path)) return;
-    strcat(path, "/hotspots.ini");
-
-    if (!yaat_asset_read_all(&g_asset_store, path, &buffer, &buffer_size)) return;
-
-    hotspot = 0;
-    for (line = strtok((char *)buffer, "\n"); line != 0;
-         line = strtok(0, "\n")) {
-        char *text;
-        char *equals;
-
-        text = yaat_trim_text(line);
-        if (text[0] == '\0' || text[0] == ';' || text[0] == '#') continue;
-        if (text[0] == '[') {
-            char *close = strchr(text, ']');
-            if (close != 0 && g_runtime_hotspot_count < YAAT_MAX_RUNTIME_HOTSPOTS) {
-                *close = '\0';
-                hotspot = &g_runtime_hotspots[g_runtime_hotspot_count++];
-                memset(hotspot, 0, sizeof(*hotspot));
-                yaat_copy(hotspot->id, sizeof(hotspot->id), text + 1,
-                          strlen(text + 1));
-                yaat_copy(hotspot->cursor, sizeof(hotspot->cursor), "arrow", 5);
-            }
-            continue;
-        }
-        if (hotspot == 0) continue;
-        equals = strchr(text, '=');
-        if (equals == 0) continue;
-        *equals = '\0';
-        text = yaat_trim_text(text);
-        ++equals;
-        equals = yaat_trim_text(equals);
-        if (strcmp(text, "rect") == 0) {
-            sscanf(equals, "%d,%d,%d,%d", &hotspot->x, &hotspot->y,
-                   &hotspot->width, &hotspot->height);
-        } else if (strcmp(text, "cursor") == 0) {
-            yaat_copy(hotspot->cursor, sizeof(hotspot->cursor), equals,
-                      strlen(equals));
-        }
-    }
-    free(buffer);
-}
-
 static YaatRuntimeHotspot *yaat_runtime_hotspot_at(int x, int y)
 {
     int i;
 
-    for (i = g_runtime_hotspot_count - 1; i >= 0; --i) {
-        YaatRuntimeHotspot *hotspot = &g_runtime_hotspots[i];
+    if (!g_runtime_load.ok) return 0;
+    for (i = g_runtime_load.room.hotspot_count - 1; i >= 0; --i) {
+        YaatRuntimeHotspot *hotspot = &g_runtime_load.room.hotspots[i];
         if (hotspot->width > 0 && hotspot->height > 0 && x >= hotspot->x &&
             y >= hotspot->y && x < hotspot->x + hotspot->width &&
             y < hotspot->y + hotspot->height) {
@@ -1102,6 +1029,36 @@ static int yaat_runtime_ini_hit(const char *path, int x, int y, char *id,
 #undef YAAT_RUNTIME_CHECK_HIT
 }
 
+
+static void yaat_runtime_change_room(const YaatRuntimeHotspot *hotspot)
+{
+    YaatRuntimeLoadResult next_load;
+    YaatEvent *enter_event;
+    int script_room_index;
+    int player_x;
+    int player_y;
+
+    if (hotspot == 0 || hotspot->target_room[0] == '\0') return;
+    player_x = hotspot->has_target_x ? hotspot->target_x : YAAT_BACKBUFFER_WIDTH / 2;
+    player_y = hotspot->has_target_y ? hotspot->target_y : YAAT_PLAYFIELD_HEIGHT - 20;
+    yaat_runtime_load_room_from_store(&g_asset_store, hotspot->target_room, &next_load);
+    if (!next_load.ok) return;
+
+    g_runtime_load = next_load;
+    script_room_index = yaat_room_index_by_id(g_runtime_load.room.id);
+    if (script_room_index >= 0) g_current_room = script_room_index;
+    g_player_x = player_x;
+    g_player_y = player_y;
+    g_target_x = g_player_x;
+    g_target_y = g_player_y;
+    if (script_room_index >= 0) {
+        enter_event = yaat_find_event(g_rooms[g_current_room].events,
+                                      g_rooms[g_current_room].event_count,
+                                      "enter", 0);
+        yaat_execute_event(enter_event);
+    }
+}
+
 static int yaat_runtime_click_game(int x, int y)
 {
     int i;
@@ -1126,12 +1083,21 @@ static int yaat_runtime_click_game(int x, int y)
         }
     }
 
-    yaat_runtime_join_path(path, sizeof(path),
-                           yaat_runtime_logical_path(room->room_path),
-                           "hotspots.ini");
-    if (yaat_runtime_ini_hit(path, x, y, id, sizeof(id), event_name, sizeof(event_name))) {
-        yaat_runtime_execute_entity_event(id, event_name);
-        return 1;
+    for (i = room->hotspot_count - 1; i >= 0; --i) {
+        YaatRuntimeHotspot *hotspot = &room->hotspots[i];
+        if (hotspot->width > 0 && hotspot->height > 0 && x >= hotspot->x &&
+            y >= hotspot->y && x < hotspot->x + hotspot->width &&
+            y < hotspot->y + hotspot->height) {
+            if (strcmp(hotspot->action, "change_room") == 0) {
+                yaat_runtime_change_room(hotspot);
+            } else {
+                yaat_copy(event_name, sizeof(event_name),
+                          hotspot->script_event[0] != '\0' ? hotspot->script_event : "on_click",
+                          strlen(hotspot->script_event[0] != '\0' ? hotspot->script_event : "on_click"));
+                yaat_runtime_execute_entity_event(hotspot->id, event_name);
+            }
+            return 1;
+        }
     }
     return 0;
 }
@@ -1333,7 +1299,6 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
             runtime_room_index = yaat_room_index_by_id(g_runtime_load.room.id);
             if (runtime_room_index >= 0) g_current_room = runtime_room_index;
         }
-        yaat_load_runtime_hotspots();
         SetTimer(window, YAAT_FRAME_TIMER_ID, YAAT_FRAME_TIMER_MS, 0);
         return 0;
     }
@@ -1405,16 +1370,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
     WNDCLASSEXA window_class;
     HWND window;
     MSG message;
-    YaatAssetStore asset_store;
-
     (void)previous_instance;
     (void)command_line;
 
-    yaat_asset_store_init(&g_asset_store, "game");
-    yaat_runtime_load_start_room("game/game.ini", &g_runtime_load);
-    yaat_asset_store_init_loose(&asset_store, "game");
-    yaat_runtime_load_start_room_from_store(&asset_store, &g_runtime_load);
-
+    yaat_asset_store_init_loose(&g_asset_store, "game");
+    yaat_runtime_load_start_room_from_store(&g_asset_store, &g_runtime_load);
     ZeroMemory(&window_class, sizeof(window_class));
     window_class.cbSize = sizeof(window_class); window_class.style = CS_HREDRAW | CS_VREDRAW; window_class.lpfnWndProc = yaat_window_proc;
     window_class.hInstance = instance; window_class.hCursor = LoadCursorA(0, IDC_ARROW); window_class.hbrBackground = 0; window_class.lpszClassName = YAAT_WINDOW_CLASS_NAME;
