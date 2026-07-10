@@ -109,10 +109,7 @@ static int rc(FILE *f, YaatCommand *c)
 
 static int valid_command(const YaatCommand *c, const YaatScriptPackage *p)
 {
-    if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_CALL) return 0;
     if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_SET_OBJECT_SPRITE) return 0;
-    if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_DROP) return 0;
-    if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_CONSUME) return 0;
     if (c->child_count < 0 || c->first_child < 0 ||
         c->else_child_count < 0 || c->first_else_child < 0) return 0;
     if (c->child_count > 0 &&
@@ -136,8 +133,6 @@ int yaat_bytecode_write_file(const char *path, const YaatScriptPackage *p)
     w16(f, (unsigned)p->room_count);
     w16(f, (unsigned)p->command_count);
     w16(f, (unsigned)p->global_event_count);
-    for (i = 0; i < p->var_count; ++i) { ws(f, p->vars[i].name, 32); w16(f, (unsigned)p->vars[i].bool_value); }
-    w16(f, 0);
     for (i = 0; i < p->var_count; ++i) { ws(f, p->vars[i].name, 32); wv(f, &p->vars[i].value); }
     for (i = 0; i < p->command_count; ++i) wc(f, &p->commands[i]);
     for (i = 0; i < p->global_event_count; ++i) we(f, &p->global_events[i]);

@@ -110,7 +110,6 @@ static YaatSavedRuntimeObjectState g_saved_runtime_objects[YAAT_MAX_SAVED_RUNTIM
 static int g_saved_runtime_object_count;
 static int g_suppress_runtime_state_capture;
 
-typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
 typedef struct YaatViewport { int x; int y; int width; int height; } YaatViewport;
 typedef struct YaatBitmap { unsigned long *pixels; int width; int height; int has_alpha; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
 static YaatBitmap g_background_bitmap;
@@ -178,6 +177,8 @@ static void yaat_update_shake(void)
     if (magnitude < 1) magnitude = 1;
     g_shake_offset_x = yaat_clamp_int(yaat_shake_sample(g_shake_elapsed_ms + 17, magnitude), -32, 32);
     g_shake_offset_y = yaat_clamp_int(yaat_shake_sample(g_shake_elapsed_ms + 53, magnitude), -32, 32);
+}
+
 static double yaat_clamp_double(double value, double minimum, double maximum)
 {
     if (value < minimum) return minimum;
@@ -1570,7 +1571,7 @@ static int yaat_save_script_state(const char *path)
 
     fprintf(file, "vars %d\n", g_var_count);
     for (i = 0; i < g_var_count; ++i) {
-        fprintf(file, "var %s %d\n", g_vars[i].name, g_vars[i].bool_value);
+        fprintf(file, "var %s %d\n", g_vars[i].name, g_vars[i].value.bool_value);
     }
 
     fprintf(file, "inventory %d\n", g_inventory_count);
@@ -1962,7 +1963,7 @@ static void yaat_import_package(YaatScriptPackage *package)
     int j;
     int command_base = g_command_count;
     if (!package) return;
-    for (i = 0; i < package->var_count; ++i) yaat_set_var(package->vars[i].name, package->vars[i].bool_value);
+    for (i = 0; i < package->var_count; ++i) yaat_set_var(package->vars[i].name, package->vars[i].value.bool_value);
     yaat_import_global_events(package, command_base);
     for (i = 0; i < package->var_count; ++i) yaat_set_var_value(package->vars[i].name, &package->vars[i].value);
     for (i = 0; i < package->command_count && g_command_count < YAAT_MAX_COMMANDS; ++i) {
@@ -2647,8 +2648,11 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
                                        (int)(short)HIWORD(l_param));
         return 0;
     case WM_SETCURSOR:
-        SetCursor(0);
-        return TRUE;
+        if (LOWORD(l_param) == HTCLIENT) {
+            SetCursor(0);
+            return TRUE;
+        }
+        break;
     case WM_ERASEBKGND:
         return TRUE;
     case WM_SYSKEYDOWN:
@@ -2686,8 +2690,13 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
                                          (int)(short)HIWORD(l_param));
         InvalidateRect(window, 0, FALSE); return 0;
     case WM_TIMER:
-        if (w_param == YAAT_FRAME_TIMER_ID) { yaat_update_player(); yaat_update_shake(); InvalidateRect(window, 0, FALSE); return 0; }
-        if (w_param == YAAT_FRAME_TIMER_ID) { g_animation_clock_ms += YAAT_FRAME_TIMER_MS; yaat_update_player(); InvalidateRect(window, 0, FALSE); return 0; }
+        if (w_param == YAAT_FRAME_TIMER_ID) {
+            g_animation_clock_ms += YAAT_FRAME_TIMER_MS;
+            yaat_update_player();
+            yaat_update_shake();
+            InvalidateRect(window, 0, FALSE);
+            return 0;
+        }
         break;
     case WM_PAINT: {
         PAINTSTRUCT paint; HDC dc; RECT client_rect; YaatViewport viewport;
@@ -2720,13 +2729,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
     WNDCLASSEXA window_class;
     HWND window;
     MSG message;
-
-    (void)previous_instance;
-    (void)command_line;
-
-    yaat_asset_store_init(&g_asset_store, "game");
-    yaat_asset_store_init_loose(&g_runtime_asset_store, "game");
-    yaat_runtime_load_start_room_from_store(&g_runtime_asset_store, &g_runtime_load);
 
     (void)previous_instance;
     (void)command_line;
