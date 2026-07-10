@@ -55,6 +55,12 @@ typedef struct YaatRuntimeHotspot {
     char name[YAAT_ASSET_MAX_NAME];
     char cursor[YAAT_ASSET_MAX_NAME];
     char script_event[YAAT_ASSET_MAX_NAME];
+    char action[YAAT_ASSET_MAX_NAME];
+    char target_room[YAAT_ASSET_MAX_NAME];
+    int target_x;
+    int target_y;
+    int has_target_x;
+    int has_target_y;
     int x;
     int y;
     int width;
@@ -122,6 +128,9 @@ void yaat_asset_buffer_free(YaatAssetBuffer *buffer);
 
 void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
                                              YaatRuntimeLoadResult *result);
+void yaat_runtime_load_room_from_store(YaatAssetStore *store,
+                                       const char *room_id,
+                                       YaatRuntimeLoadResult *result);
 void yaat_runtime_load_start_room(const char *game_ini_path,
                                   YaatRuntimeLoadResult *result);
 
