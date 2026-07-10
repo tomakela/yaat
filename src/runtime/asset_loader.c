@@ -276,7 +276,9 @@ static void yaat_format_asset_error_path(char *dst, int dst_size,
         strncat(dst, ")", dst_size - 1 - strlen(dst));
     }
 }
-static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatGameConfig *config,
+static void yaat_load_game_config(YaatAssetStore *store, const char *path,
+                                  int require_first_room,
+                                  YaatGameConfig *config,
                                   YaatRuntimeLoadResult *result)
 {
     YaatAssetBuffer buffer;
@@ -332,7 +334,7 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatG
     }
     yaat_asset_buffer_free(&buffer);
 
-    if (config->first_room[0] == '\0') {
+    if (require_first_room && config->first_room[0] == '\0') {
         yaat_format_asset_error_path(error_path, sizeof(error_path), path,
                                      store != 0 ? store->source : 0);
         yaat_set_error(result, "game.ini is missing game.first_room", error_path);
@@ -554,8 +556,9 @@ static void yaat_load_room_hotspots(YaatAssetStore *store, const char *path, Yaa
     yaat_asset_buffer_free(&buffer);
 }
 
-void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
-                                             YaatRuntimeLoadResult *result)
+void yaat_runtime_load_room_from_store(YaatAssetStore *store,
+                                       const char *room_id,
+                                       YaatRuntimeLoadResult *result)
 {
     YaatGameConfig config;
     char room_dir[YAAT_ASSET_MAX_PATH];
@@ -569,12 +572,21 @@ void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
     memset(result, 0, sizeof(*result));
     result->ok = 1;
 
-    yaat_load_game_config(store, "game.ini", &config, result);
+    if (room_id == 0 || room_id[0] == '\0') {
+        yaat_set_error(result, "Missing room id", 0);
+        return;
+    }
+
+    yaat_load_game_config(store, "game.ini", 0, &config, result);
     if (!result->ok) {
         return;
     }
 
-    yaat_join_path(room_dir, sizeof(room_dir), config.rooms_path, config.first_room);
+    if (strchr(room_id, '/') != 0 || strchr(room_id, '\\') != 0) {
+        yaat_copy_string(room_dir, sizeof(room_dir), room_id);
+    } else {
+        yaat_join_path(room_dir, sizeof(room_dir), config.rooms_path, room_id);
+    }
     yaat_join_path(room_ini, sizeof(room_ini), room_dir, "room.ini");
     yaat_join_path(objects_ini, sizeof(objects_ini), room_dir, "objects.ini");
     yaat_join_path(hotspots_ini, sizeof(hotspots_ini), room_dir, "hotspots.ini");
@@ -586,6 +598,24 @@ void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
     }
     yaat_load_room_objects(store, objects_ini, &result->room);
     yaat_load_room_hotspots(store, hotspots_ini, &result->room);
+}
+
+void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
+                                             YaatRuntimeLoadResult *result)
+{
+    YaatGameConfig config;
+
+    if (result == 0) {
+        return;
+    }
+    memset(result, 0, sizeof(*result));
+    result->ok = 1;
+
+    yaat_load_game_config(store, "game.ini", 1, &config, result);
+    if (!result->ok) {
+        return;
+    }
+    yaat_runtime_load_room_from_store(store, config.first_room, result);
 }
 
 void yaat_runtime_load_start_room(const char *game_ini_path,

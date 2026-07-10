@@ -46,6 +46,7 @@ static char g_dialogue_text[YAAT_TEXT_MAX];
 static int g_dialogue_visible;
 static YaatRuntimeLoadResult g_runtime_load;
 static YaatAssetStore g_asset_store;
+static YaatAssetStore g_runtime_asset_store;
 static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
 static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
@@ -720,6 +721,7 @@ static YaatEvent *yaat_find_event(YaatEvent *events, int count, const char *name
     return 0;
 }
 
+static void yaat_runtime_request_room_assets(const char *room_id);
 static void yaat_enter_room(int room_index);
 
 static void yaat_execute_commands(int first, int count)
@@ -755,10 +757,21 @@ static void yaat_execute_event(YaatEvent *event)
     if (event) yaat_execute_commands(event->first_command, event->command_count);
 }
 
+static void yaat_runtime_request_room_assets(const char *room_id)
+{
+    YaatRuntimeLoadResult load_result;
+
+    if (room_id == 0 || room_id[0] == '\0') return;
+    yaat_runtime_load_room_from_store(&g_runtime_asset_store, room_id, &load_result);
+    g_runtime_load = load_result;
+    yaat_load_runtime_hotspots();
+}
+
 static void yaat_enter_room(int room_index)
 {
     YaatEvent *enter_event;
     g_current_room = room_index;
+    yaat_runtime_request_room_assets(g_rooms[g_current_room].id);
     g_player_x = YAAT_BACKBUFFER_WIDTH / 2;
     g_player_y = YAAT_PLAYFIELD_HEIGHT - 20;
     g_target_x = g_player_x;
@@ -1405,15 +1418,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
     WNDCLASSEXA window_class;
     HWND window;
     MSG message;
-    YaatAssetStore asset_store;
 
     (void)previous_instance;
     (void)command_line;
 
     yaat_asset_store_init(&g_asset_store, "game");
-    yaat_runtime_load_start_room("game/game.ini", &g_runtime_load);
-    yaat_asset_store_init_loose(&asset_store, "game");
-    yaat_runtime_load_start_room_from_store(&asset_store, &g_runtime_load);
+    yaat_asset_store_init_loose(&g_runtime_asset_store, "game");
+    yaat_runtime_load_start_room_from_store(&g_runtime_asset_store, &g_runtime_load);
 
     ZeroMemory(&window_class, sizeof(window_class));
     window_class.cbSize = sizeof(window_class); window_class.style = CS_HREDRAW | CS_VREDRAW; window_class.lpfnWndProc = yaat_window_proc;
