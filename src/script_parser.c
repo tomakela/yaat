@@ -181,6 +181,28 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_HIDE;
             parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "show")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_SHOW;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "move")) {
+            ScriptToken *x;
+            ScriptToken *y;
+            token = yaat_advance_token(cursor);
+            x = yaat_advance_token(cursor);
+            yaat_match_token(cursor, SCRIPT_TOKEN_COMMA);
+            y = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_MOVE_OBJECT;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+            cmd->bool_value = atoi(x->lexeme);
+            cmd->int_value = atoi(y->lexeme);
+        } else if (yaat_token_is(token, "set_sprite")) {
+            ScriptToken *sprite;
+            token = yaat_advance_token(cursor);
+            sprite = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_SET_OBJECT_SPRITE;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+            parser_copy(cmd->b, sizeof(cmd->b), sprite->lexeme, sprite->length);
         } else if (yaat_token_is(token, "shake")) {
             ScriptToken *duration = yaat_advance_token(cursor);
             ScriptToken *magnitude = yaat_advance_token(cursor);
