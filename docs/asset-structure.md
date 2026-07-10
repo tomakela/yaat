@@ -319,3 +319,47 @@ Release `.dat` files are ZIP-compatible archives for the first runtime, with the
 - Use forward slashes in data files and archive entries; avoid backslashes in runtime asset paths.
 - Keep individual files small enough for old machines; split oversized speech or animation assets.
 - Validate the final asset tree on a clean Windows 95-compatible runtime target or emulator before release.
+
+## Release asset archives
+
+The loose `game/` directory is the canonical source for YAAT assets. Developers
+should edit and review files in that tree, then generate release artifacts from
+it as a separate packaging step.
+
+Use the development-time packer in `tools/asset_pack/` to create ZIP-format
+`.dat` archives while preserving logical paths relative to the packed folder:
+
+```sh
+cc -std=c99 -Wall -Wextra -pedantic -o tools/asset_pack/asset_pack tools/asset_pack/asset_pack.c
+./tools/asset_pack/asset_pack game game.dat
+```
+
+Patch folders can be packed the same way:
+
+```sh
+./tools/asset_pack/asset_pack patch_folder patch0000.dat
+```
+
+Generated `game.dat` and `patchNNNN.dat` files are release artifacts, not the
+canonical asset source. The packer writes a manifest report next to each archive
+as `<output>.manifest.txt`, listing the normalized logical paths, byte sizes,
+and CRC-32 values of packed files.
+## Initial packed `.dat` format
+
+YAAT's first packed runtime asset format is a ZIP archive renamed with a `.dat`
+extension, for example `game/packed/game.dat`. This keeps the packer format
+inspectable with ordinary ZIP tools while the engine owns all runtime access
+through `src/runtime/zip_archive.c` and `src/runtime/zip_archive.h`.
+
+The initial runtime reader intentionally supports only a conservative subset:
+
+- stored and deflated file entries
+- central-directory table-of-contents lookup
+- relative printable ASCII paths normalized to `/`
+- no encryption, no ZIP64, no symlinks, and no absolute paths or `.`/`..` path segments
+- caller-supplied uncompressed-size limits before allocating entry buffers
+
+Game/runtime parsers should request files through the runtime archive wrapper and
+must not parse ZIP records directly. Loose development assets may continue to use
+the folder structure documented above until the engine wiring selects a `.dat`
+archive at startup.
