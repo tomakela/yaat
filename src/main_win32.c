@@ -522,11 +522,13 @@ static void yaat_draw_player(void)
     const char *animation_id;
     YaatAnimationClip *clip;
     YaatAnimationFrame *frame;
+    const char *sprite_path;
     int draw_x;
     int draw_y;
     int frame_width;
     int frame_height;
 
+    sprite_path = g_runtime_load.player.idle;
     if (g_player_x != g_target_x || g_player_y != g_target_y) {
         if (g_target_x < g_player_x) {
             animation_id = "walk_left";
@@ -549,6 +551,18 @@ static void yaat_draw_player(void)
     }
     frame = &clip->frames[g_player_animation_frame];
     if (!yaat_load_bmp(&g_player_bitmap, frame->path)) {
+            sprite_path = g_runtime_load.player.walk_left;
+        } else if (g_target_x > g_player_x) {
+            sprite_path = g_runtime_load.player.walk_right;
+        } else {
+            sprite_path = g_player_facing_right ?
+                          g_runtime_load.player.walk_right :
+                          g_runtime_load.player.walk_left;
+        }
+    }
+
+    if (sprite_path == 0 || sprite_path[0] == '\0' ||
+        !yaat_load_bmp(&g_player_bitmap, sprite_path)) {
         yaat_draw_player_placeholder();
         return;
     }

@@ -296,6 +296,7 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatG
     char frames[YAAT_LINE_MAX];
     YaatAnimationClip *clip;
 
+    memset(config, 0, sizeof(*config));
     yaat_copy_string(config->rooms_path, sizeof(config->rooms_path), "rooms");
     config->first_room[0] = '\0';
     memset(&config->player, 0, sizeof(config->player));
@@ -355,6 +356,19 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatG
                                                      yaat_trim(equals));
                 }
             }
+                             yaat_trim(equals + 1));
+        } else if (strcmp(section, "player") == 0 &&
+                   strcmp(yaat_trim(text), "idle") == 0) {
+            yaat_copy_string(config->player.idle, sizeof(config->player.idle),
+                             yaat_trim(equals + 1));
+        } else if (strcmp(section, "player") == 0 &&
+                   strcmp(yaat_trim(text), "walk_left") == 0) {
+            yaat_copy_string(config->player.walk_left, sizeof(config->player.walk_left),
+                             yaat_trim(equals + 1));
+        } else if (strcmp(section, "player") == 0 &&
+                   strcmp(yaat_trim(text), "walk_right") == 0) {
+            yaat_copy_string(config->player.walk_right, sizeof(config->player.walk_right),
+                             yaat_trim(equals + 1));
         }
     }
     yaat_asset_buffer_free(&buffer);
@@ -699,6 +713,8 @@ void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
     if (!result->ok) {
         return;
     }
+    result->player = config.player;
+
     result->player = config.player;
 
     yaat_join_path(room_dir, sizeof(room_dir), config.rooms_path, config.first_room);

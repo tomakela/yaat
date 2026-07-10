@@ -28,6 +28,12 @@ typedef struct YaatRuntimeObject {
     int visible;
 } YaatRuntimeObject;
 
+typedef struct YaatRuntimePlayer {
+    char idle[YAAT_ASSET_MAX_PATH];
+    char walk_left[YAAT_ASSET_MAX_PATH];
+    char walk_right[YAAT_ASSET_MAX_PATH];
+} YaatRuntimePlayer;
+
 typedef struct YaatRuntimeHotspot {
     char id[YAAT_ASSET_MAX_NAME];
     char name[YAAT_ASSET_MAX_NAME];
@@ -77,6 +83,7 @@ typedef struct YaatRuntimeRoom {
 typedef struct YaatRuntimeLoadResult {
     int ok;
     char error[160];
+    YaatRuntimePlayer player;
     YaatRuntimeRoom room;
     YaatRuntimePlayer player;
 } YaatRuntimeLoadResult;
