@@ -168,6 +168,8 @@ void yaat_asset_store_init_loose(YaatAssetStore *store, const char *loose_root)
     if (store == 0) {
         return;
     }
+    yaat_copy_string(store->root_path, sizeof(store->root_path),
+                     loose_root != 0 ? loose_root : "game");
     yaat_copy_string(store->loose_root, sizeof(store->loose_root),
                      loose_root != 0 ? loose_root : "game");
     yaat_copy_string(store->source, sizeof(store->source), store->loose_root);
@@ -744,6 +746,52 @@ static void yaat_default_player_animations(YaatRuntimePlayer *player)
                              "graphics/sprites/player_walk_right.bmp");
 }
 
+static YaatRuntimeHotspot *yaat_find_or_add_room_hotspot(YaatRuntimeRoom *room,
+                                                         const char *id)
+{
+    int i;
+
+    if (room == 0 || id == 0 || id[0] == '\0') {
+        return 0;
+    }
+    for (i = 0; i < room->hotspot_count; ++i) {
+        if (strcmp(room->hotspots[i].id, id) == 0) {
+            return &room->hotspots[i];
+        }
+    }
+    if (room->hotspot_count >= YAAT_ASSET_MAX_HOTSPOTS) {
+        return 0;
+    }
+    i = room->hotspot_count++;
+    memset(&room->hotspots[i], 0, sizeof(room->hotspots[i]));
+    yaat_copy_string(room->hotspots[i].id, sizeof(room->hotspots[i].id), id);
+    yaat_copy_string(room->hotspots[i].cursor, sizeof(room->hotspots[i].cursor), "arrow");
+    return &room->hotspots[i];
+}
+
+static void yaat_parse_required_flag(YaatRuntimeHotspot *hotspot,
+                                     const char *value)
+{
+    char copy[YAAT_LINE_MAX];
+    char *colon;
+    char *name;
+
+    if (hotspot == 0 || value == 0) {
+        return;
+    }
+    yaat_copy_string(copy, sizeof(copy), value);
+    colon = strchr(copy, ':');
+    if (colon != 0) {
+        *colon = '\0';
+        hotspot->required_flag_value = yaat_bool_value(yaat_trim(colon + 1), 1);
+    } else {
+        hotspot->required_flag_value = 1;
+    }
+    name = yaat_trim(copy);
+    yaat_copy_string(hotspot->required_flag, sizeof(hotspot->required_flag), name);
+    hotspot->has_required_flag = hotspot->required_flag[0] != '\0';
+}
+
 static void yaat_load_room_objects(YaatAssetStore *store, const char *path, YaatRuntimeRoom *room)
 {
     YaatAssetBuffer buffer;
@@ -809,6 +857,12 @@ static void yaat_load_room_objects(YaatAssetStore *store, const char *path, Yaat
             object->width = atoi(yaat_trim(equals));
         } else if (strcmp(text, "height") == 0) {
             object->height = atoi(yaat_trim(equals));
+        } else if (strcmp(text, "walk_x") == 0 || strcmp(text, "use_x") == 0) {
+            object->walk_x = atoi(yaat_trim(equals));
+            object->has_walk_x = 1;
+        } else if (strcmp(text, "walk_y") == 0 || strcmp(text, "use_y") == 0) {
+            object->walk_y = atoi(yaat_trim(equals));
+            object->has_walk_y = 1;
         } else if (strcmp(text, "visible") == 0) {
             object->visible = yaat_bool_value(yaat_trim(equals), 1);
         } else if (strcmp(text, "transparency") == 0) {
@@ -889,6 +943,104 @@ static void yaat_load_room_hotspots(YaatAssetStore *store, const char *path, Yaa
         } else if (strcmp(text, "target_y") == 0) {
             hotspot->target_y = atoi(yaat_trim(equals));
             hotspot->has_target_y = 1;
+        } else if (strcmp(text, "walk_x") == 0 || strcmp(text, "use_x") == 0) {
+            hotspot->walk_x = atoi(yaat_trim(equals));
+            hotspot->has_walk_x = 1;
+        } else if (strcmp(text, "walk_y") == 0 || strcmp(text, "use_y") == 0) {
+            hotspot->walk_y = atoi(yaat_trim(equals));
+            hotspot->has_walk_y = 1;
+        }
+    }
+    yaat_asset_buffer_free(&buffer);
+}
+
+static void yaat_load_room_exits(YaatAssetStore *store, const char *path,
+                                 YaatRuntimeRoom *room)
+{
+    YaatAssetBuffer buffer;
+    YaatIniReader reader;
+    char line[YAAT_LINE_MAX];
+    char section[YAAT_ASSET_MAX_NAME];
+    YaatRuntimeHotspot *hotspot;
+
+    if (!yaat_asset_store_load(store, path, &buffer)) {
+        return;
+    }
+    reader.data = (const char *)buffer.data;
+    reader.size = buffer.size;
+    reader.offset = 0;
+    section[0] = '\0';
+    hotspot = 0;
+
+    while (yaat_ini_read_line(&reader, line, sizeof(line))) {
+        char *text;
+        char *equals;
+
+        text = yaat_trim(line);
+        if (text[0] == '\0' || text[0] == ';' || text[0] == '#') {
+            continue;
+        }
+        if (text[0] == '[') {
+            char *close = strchr(text, ']');
+            hotspot = 0;
+            if (close != 0) {
+                *close = '\0';
+                yaat_copy_string(section, sizeof(section), text + 1);
+            }
+            continue;
+        }
+        equals = strchr(text, '=');
+        if (equals == 0) {
+            continue;
+        }
+        *equals = '\0';
+        text = yaat_trim(text);
+        ++equals;
+        equals = yaat_trim(equals);
+
+        if (hotspot == 0) {
+            if (strcmp(text, "hotspot") == 0) {
+                hotspot = yaat_find_or_add_room_hotspot(room, equals);
+            } else {
+                hotspot = yaat_find_or_add_room_hotspot(room, section);
+            }
+        }
+        if (hotspot == 0) {
+            continue;
+        }
+
+        if (strcmp(text, "hotspot") == 0) {
+            hotspot = yaat_find_or_add_room_hotspot(room, equals);
+            continue;
+        }
+        if (strcmp(text, "to") == 0) {
+            yaat_copy_string(hotspot->action, sizeof(hotspot->action), "change_room");
+            yaat_copy_string(hotspot->target_room, sizeof(hotspot->target_room), equals);
+        } else if (strcmp(text, "target_x") == 0) {
+            hotspot->target_x = atoi(equals);
+            hotspot->has_target_x = 1;
+        } else if (strcmp(text, "target_y") == 0) {
+            hotspot->target_y = atoi(equals);
+            hotspot->has_target_y = 1;
+        } else if (strcmp(text, "walk_x") == 0 || strcmp(text, "use_x") == 0) {
+            hotspot->walk_x = atoi(equals);
+            hotspot->has_walk_x = 1;
+        } else if (strcmp(text, "walk_y") == 0 || strcmp(text, "use_y") == 0) {
+            hotspot->walk_y = atoi(equals);
+            hotspot->has_walk_y = 1;
+        } else if (strcmp(text, "x") == 0) {
+            hotspot->x = atoi(equals);
+        } else if (strcmp(text, "y") == 0) {
+            hotspot->y = atoi(equals);
+        } else if (strcmp(text, "width") == 0) {
+            hotspot->width = atoi(equals);
+        } else if (strcmp(text, "height") == 0) {
+            hotspot->height = atoi(equals);
+        } else if (strcmp(text, "rect") == 0) {
+            yaat_parse_rect(equals, &hotspot->x, &hotspot->y,
+                            &hotspot->width, &hotspot->height);
+        } else if (strcmp(text, "requires_flag") == 0) {
+            yaat_parse_required_flag(hotspot, equals);
         }
     }
     yaat_asset_buffer_free(&buffer);
@@ -902,17 +1054,20 @@ static void yaat_runtime_load_room_assets(YaatAssetStore *store, const char *roo
     char room_ini[YAAT_ASSET_MAX_PATH];
     char objects_ini[YAAT_ASSET_MAX_PATH];
     char hotspots_ini[YAAT_ASSET_MAX_PATH];
+    char exits_ini[YAAT_ASSET_MAX_PATH];
 
     yaat_join_path(room_dir, sizeof(room_dir), rooms_path, room_id);
     yaat_join_path(room_ini, sizeof(room_ini), room_dir, "room.ini");
     yaat_join_path(objects_ini, sizeof(objects_ini), room_dir, "objects.ini");
     yaat_join_path(hotspots_ini, sizeof(hotspots_ini), room_dir, "hotspots.ini");
+    yaat_join_path(exits_ini, sizeof(exits_ini), room_dir, "exits.ini");
 
     yaat_copy_string(result->room.room_path, sizeof(result->room.room_path), room_dir);
     yaat_load_room_ini(store, room_ini, &result->room, result);
     if (!result->ok) return;
     yaat_load_room_objects(store, objects_ini, &result->room);
     yaat_load_room_hotspots(store, hotspots_ini, &result->room);
+    yaat_load_room_exits(store, exits_ini, &result->room);
     yaat_runtime_load_inventory_from_store(store, "inventory/items.ini", &result->inventory);
 }
 

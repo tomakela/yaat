@@ -43,6 +43,10 @@ typedef struct YaatRuntimeObject {
     int y;
     int width;
     int height;
+    int walk_x;
+    int walk_y;
+    int has_walk_x;
+    int has_walk_y;
     int visible;
     YaatTransparency transparency;
     int transparent_color_enabled;
@@ -56,6 +60,9 @@ typedef struct YaatRuntimeHotspot {
     char script_event[YAAT_ASSET_MAX_NAME];
     char action[YAAT_ASSET_MAX_NAME];
     char target_room[YAAT_ASSET_MAX_NAME];
+    char required_flag[YAAT_ASSET_MAX_NAME];
+    int required_flag_value;
+    int has_required_flag;
     int target_x;
     int target_y;
     int has_target_x;
@@ -64,6 +71,10 @@ typedef struct YaatRuntimeHotspot {
     int y;
     int width;
     int height;
+    int walk_x;
+    int walk_y;
+    int has_walk_x;
+    int has_walk_y;
 } YaatRuntimeHotspot;
 
 typedef struct YaatAnimationFrame {
