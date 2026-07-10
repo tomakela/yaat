@@ -15,6 +15,19 @@ typedef struct YaatAssetBuffer {
     char source[YAAT_ASSET_MAX_PATH];
 } YaatAssetBuffer;
 
+typedef enum YaatTransparencyMode {
+    YAAT_TRANSPARENCY_NONE = 0,
+    YAAT_TRANSPARENCY_COLOR_KEY,
+    YAAT_TRANSPARENCY_ALPHA,
+    YAAT_TRANSPARENCY_MASK
+} YaatTransparencyMode;
+
+typedef struct YaatTransparency {
+    YaatTransparencyMode mode;
+    unsigned long color_key;
+    char mask[YAAT_ASSET_MAX_PATH];
+} YaatTransparency;
+
 typedef struct YaatRuntimeObject {
     char id[YAAT_ASSET_MAX_NAME];
     char name[YAAT_ASSET_MAX_NAME];
@@ -24,6 +37,7 @@ typedef struct YaatRuntimeObject {
     int width;
     int height;
     int visible;
+    YaatTransparency transparency;
 } YaatRuntimeObject;
 
 typedef struct YaatRuntimeHotspot {

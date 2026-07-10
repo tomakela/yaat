@@ -53,13 +53,16 @@ static int g_fullscreen;
 static RECT g_windowed_rect;
 static DWORD g_windowed_style;
 
-typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
+typedef struct YaatBitmap { unsigned long *pixels; int width; int height; int has_alpha; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
 static YaatBitmap g_background_bitmap;
 static YaatBitmap g_player_bitmap;
 
 static void yaat_runtime_join_path(char *dst, size_t dst_size,
                                    const char *left, const char *right);
 static const char *yaat_runtime_logical_path(const char *path);
+static void yaat_draw_bitmap_transparent(YaatBitmap *bitmap, int dst_x, int dst_y,
+                                         const YaatTransparency *transparency,
+                                         const char *mask_base_path);
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -193,6 +196,7 @@ static void yaat_unload_bitmap(YaatBitmap *bitmap)
     bitmap->pixels = 0;
     bitmap->width = 0;
     bitmap->height = 0;
+    bitmap->has_alpha = 0;
     bitmap->path[0] = '\0';
 }
 
@@ -215,6 +219,7 @@ static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
     unsigned long *pixels;
     int x;
     int y;
+    int has_alpha;
 
     if (path == 0 || path[0] == '\0') return 0;
     if (strcmp(bitmap->path, path) == 0 && bitmap->pixels != 0) return 1;
@@ -299,6 +304,7 @@ static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
         return 0;
     }
 
+    has_alpha = 0;
     for (y = 0; y < bmp_height; ++y) {
         int dst_y = top_down ? y : (int)bmp_height - 1 - y;
         const unsigned char *row = data + pixel_offset + ((size_t)y * row_stride);
@@ -311,7 +317,9 @@ static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
                 unsigned long b = src[0];
                 unsigned long g = src[1];
                 unsigned long r = src[2];
-                pixels[(dst_y * (int)bmp_width) + x] = b | (g << 8) | (r << 16);
+                unsigned long a = bits_per_pixel == 32 ? src[3] : 0xffUL;
+                if (bits_per_pixel == 32 && a != 0) has_alpha = 1;
+                pixels[(dst_y * (int)bmp_width) + x] = b | (g << 8) | (r << 16) | (a << 24);
             }
         }
     }
@@ -321,52 +329,109 @@ static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
     bitmap->pixels = pixels;
     bitmap->width = (int)bmp_width;
     bitmap->height = (int)bmp_height;
+    bitmap->has_alpha = has_alpha;
     yaat_copy(bitmap->path, sizeof(bitmap->path), path, strlen(path));
     return 1;
 }
 
-static void yaat_draw_bitmap(YaatBitmap *bitmap, int dst_x, int dst_y)
+static void yaat_blend_pixel(unsigned long *dst, unsigned long src)
 {
+    unsigned long alpha;
+    unsigned long inv;
+    unsigned long rb;
+    unsigned long g;
+
+    alpha = (src >> 24) & 0xffUL;
+    if (alpha == 0) return;
+    if (alpha == 0xffUL) {
+        *dst = src & 0x00ffffffUL;
+        return;
+    }
+    inv = 255UL - alpha;
+    rb = (((src & 0x00ff00ffUL) * alpha + (*dst & 0x00ff00ffUL) * inv) >> 8) & 0x00ff00ffUL;
+    g = (((src & 0x0000ff00UL) * alpha + (*dst & 0x0000ff00UL) * inv) >> 8) & 0x0000ff00UL;
+    *dst = rb | g;
+}
+
+static void yaat_draw_bitmap_transparent(YaatBitmap *bitmap, int dst_x, int dst_y,
+                                         const YaatTransparency *transparency,
+                                         const char *mask_base_path)
+{
+    YaatBitmap mask_bitmap;
+    const YaatBitmap *mask;
+    char mask_path[YAAT_ASSET_MAX_PATH * 2];
     int src_x0;
     int src_y0;
     int copy_width;
     int copy_height;
+    int x;
     int y;
+    YaatTransparencyMode mode;
+    unsigned long color_key;
 
-    if (bitmap == 0 || bitmap->pixels == 0) {
-        return;
+    if (bitmap == 0 || bitmap->pixels == 0) return;
+
+    mode = transparency != 0 ? transparency->mode : YAAT_TRANSPARENCY_ALPHA;
+    color_key = transparency != 0 ? transparency->color_key : 0x00ff00ffUL;
+    memset(&mask_bitmap, 0, sizeof(mask_bitmap));
+    mask = 0;
+    if (transparency != 0 && transparency->mask[0] != '\0') {
+        if (mask_base_path != 0 && mask_base_path[0] != '\0') {
+            yaat_runtime_join_path(mask_path, sizeof(mask_path), mask_base_path,
+                                   transparency->mask);
+        } else {
+            yaat_copy(mask_path, sizeof(mask_path), transparency->mask,
+                      strlen(transparency->mask));
+        }
+        if (yaat_load_bmp(&mask_bitmap, mask_path)) {
+            mask = &mask_bitmap;
+            mode = YAAT_TRANSPARENCY_MASK;
+        }
     }
 
     src_x0 = 0;
     src_y0 = 0;
     copy_width = bitmap->width;
     copy_height = bitmap->height;
-    if (dst_x < 0) {
-        src_x0 = -dst_x;
-        copy_width -= src_x0;
-        dst_x = 0;
-    }
-    if (dst_y < 0) {
-        src_y0 = -dst_y;
-        copy_height -= src_y0;
-        dst_y = 0;
-    }
-    if (dst_x + copy_width > g_renderer.width) {
-        copy_width = g_renderer.width - dst_x;
-    }
-    if (dst_y + copy_height > g_renderer.height) {
-        copy_height = g_renderer.height - dst_y;
-    }
+    if (dst_x < 0) { src_x0 = -dst_x; copy_width -= src_x0; dst_x = 0; }
+    if (dst_y < 0) { src_y0 = -dst_y; copy_height -= src_y0; dst_y = 0; }
+    if (dst_x + copy_width > g_renderer.width) copy_width = g_renderer.width - dst_x;
+    if (dst_y + copy_height > g_renderer.height) copy_height = g_renderer.height - dst_y;
     if (copy_width <= 0 || copy_height <= 0) {
+        yaat_unload_bitmap(&mask_bitmap);
+        return;
+    }
+
+    if (mode == YAAT_TRANSPARENCY_NONE) {
+        for (y = 0; y < copy_height; ++y) {
+            memcpy((unsigned char *)g_renderer.pixels + ((dst_y + y) * g_renderer.pitch) +
+                       ((size_t)dst_x * sizeof(unsigned long)),
+                   bitmap->pixels + ((src_y0 + y) * bitmap->width) + src_x0,
+                   (size_t)copy_width * sizeof(unsigned long));
+        }
+        yaat_unload_bitmap(&mask_bitmap);
         return;
     }
 
     for (y = 0; y < copy_height; ++y) {
-        memcpy((unsigned char *)g_renderer.pixels + ((dst_y + y) * g_renderer.pitch) +
-                   ((size_t)dst_x * sizeof(unsigned long)),
-               bitmap->pixels + ((src_y0 + y) * bitmap->width) + src_x0,
-               (size_t)copy_width * sizeof(unsigned long));
+        unsigned long *dst = (unsigned long *)((unsigned char *)g_renderer.pixels +
+                             ((dst_y + y) * g_renderer.pitch)) + dst_x;
+        unsigned long *src = bitmap->pixels + ((src_y0 + y) * bitmap->width) + src_x0;
+        for (x = 0; x < copy_width; ++x) {
+            unsigned long pixel = src[x];
+            int draw = 1;
+            if (mode == YAAT_TRANSPARENCY_COLOR_KEY && (pixel & 0x00ffffffUL) == color_key) draw = 0;
+            if (mode == YAAT_TRANSPARENCY_MASK) {
+                if (mask == 0 || src_x0 + x >= mask->width || src_y0 + y >= mask->height ||
+                    ((mask->pixels[((src_y0 + y) * mask->width) + src_x0 + x] & 0x00ffffffUL) == 0)) draw = 0;
+            }
+            if (draw) {
+                if (mode == YAAT_TRANSPARENCY_ALPHA && bitmap->has_alpha) yaat_blend_pixel(&dst[x], pixel);
+                else dst[x] = pixel & 0x00ffffffUL;
+            }
+        }
     }
+    yaat_unload_bitmap(&mask_bitmap);
 }
 
 static int yaat_draw_runtime_background(void)
@@ -460,7 +525,14 @@ static void yaat_draw_player(void)
 
     draw_x = g_player_x - (g_player_bitmap.width / 2);
     draw_y = g_player_y - g_player_bitmap.height;
-    yaat_draw_bitmap(&g_player_bitmap, draw_x, draw_y);
+    {
+        YaatTransparency transparency;
+        transparency.mode = YAAT_TRANSPARENCY_ALPHA;
+        transparency.color_key = 0x00ff00ffUL;
+        transparency.mask[0] = '\0';
+        yaat_draw_bitmap_transparent(&g_player_bitmap, draw_x, draw_y,
+                                     &transparency, "graphics/sprites");
+    }
 }
 
 static void yaat_draw_runtime_room(void)
@@ -518,7 +590,9 @@ static void yaat_draw_runtime_room(void)
                                yaat_runtime_logical_path(g_runtime_load.room.room_path),
                                object->sprite);
         if (yaat_load_bmp(&object_bitmap, object_path)) {
-            yaat_draw_bitmap(&object_bitmap, object->x, object->y);
+            yaat_draw_bitmap_transparent(&object_bitmap, object->x, object->y,
+                                         &object->transparency,
+                                         yaat_runtime_logical_path(g_runtime_load.room.room_path));
             yaat_unload_bitmap(&object_bitmap);
             continue;
         }
@@ -537,6 +611,23 @@ static void yaat_draw_cursor_placeholder(void)
 {
     unsigned long outline_color;
     unsigned long fill_color;
+    YaatBitmap cursor_bitmap;
+    YaatTransparency transparency;
+    char cursor_path[YAAT_ASSET_MAX_PATH * 2];
+
+    memset(&cursor_bitmap, 0, sizeof(cursor_bitmap));
+    yaat_runtime_join_path(cursor_path, sizeof(cursor_path), "graphics/cursors",
+                           g_cursor_state);
+    strncat(cursor_path, ".bmp", sizeof(cursor_path) - 1 - strlen(cursor_path));
+    if (yaat_load_bmp(&cursor_bitmap, cursor_path)) {
+        transparency.mode = YAAT_TRANSPARENCY_ALPHA;
+        transparency.color_key = 0x00ff00ffUL;
+        transparency.mask[0] = '\0';
+        yaat_draw_bitmap_transparent(&cursor_bitmap, g_cursor_x, g_cursor_y,
+                                     &transparency, "graphics/cursors");
+        yaat_unload_bitmap(&cursor_bitmap);
+        return;
+    }
 
     outline_color = 0x00000000UL;
     fill_color = strcmp(g_cursor_state, "use") == 0 ? 0x00ffe070UL : 0x00ffffffUL;
@@ -893,6 +984,45 @@ static void yaat_load_demo(void)
     yaat_enter_room(0);
 }
 
+
+static void yaat_draw_inventory_icons(void)
+{
+    int i;
+    YaatTransparency transparency;
+
+    transparency.mode = YAAT_TRANSPARENCY_ALPHA;
+    transparency.color_key = 0x00ff00ffUL;
+    transparency.mask[0] = '\0';
+    for (i = 0; i < g_inventory_count; ++i) {
+        YaatBitmap icon;
+        char icon_path[YAAT_ASSET_MAX_PATH * 2];
+        int slot_x;
+        int slot_y;
+
+        slot_x = 180 + (i * 22);
+        slot_y = YAAT_PLAYFIELD_HEIGHT + 10;
+        memset(&icon, 0, sizeof(icon));
+        if (yaat_load_bmp(&icon, "graphics/ui/inventory_slot.bmp")) {
+            yaat_draw_bitmap_transparent(&icon, slot_x - 2, slot_y - 2,
+                                         &transparency, "graphics/ui");
+            yaat_unload_bitmap(&icon);
+        } else {
+            yaat_draw_rect(&g_renderer, slot_x - 2, slot_y - 2, 20, 20, 0x00303038UL);
+        }
+        memset(&icon, 0, sizeof(icon));
+        yaat_runtime_join_path(icon_path, sizeof(icon_path), "inventory/icons", g_inventory[i]);
+        strncat(icon_path, ".bmp", sizeof(icon_path) - 1 - strlen(icon_path));
+        if (yaat_load_bmp(&icon, icon_path)) {
+            yaat_draw_bitmap_transparent(&icon, slot_x, slot_y, &transparency,
+                                         "inventory/icons");
+            yaat_unload_bitmap(&icon);
+        } else {
+            yaat_draw_rect(&g_renderer, slot_x, slot_y, 16, 16,
+                           yaat_hash_color(g_inventory[i], 0x00d0b060UL));
+        }
+    }
+}
+
 static void yaat_draw_script_scene(void)
 {
     int i;
@@ -909,6 +1039,7 @@ static void yaat_draw_script_scene(void)
     yaat_draw_rect(&g_renderer, g_target_x - 1, g_target_y - 5, 3, 11, 0x000f3c70UL);
     yaat_draw_player();
     yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
+    yaat_draw_inventory_icons();
     if (g_dialogue_visible) {
         yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_speaker, 0x00ffd060UL);
         yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_text, 0x00f0f0f0UL);
