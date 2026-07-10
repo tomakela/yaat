@@ -395,6 +395,8 @@ static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRunt
             room->height = atoi(yaat_trim(equals));
         } else if (strcmp(section, "display") == 0 && strcmp(text, "background") == 0) {
             yaat_copy_string(room->background, sizeof(room->background), yaat_trim(equals));
+        } else if (strcmp(section, "display") == 0 && strcmp(text, "walkmask") == 0) {
+            yaat_copy_string(room->walkmask, sizeof(room->walkmask), yaat_trim(equals));
         }
     }
     yaat_asset_buffer_free(&buffer);

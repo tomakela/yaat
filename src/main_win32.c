@@ -56,6 +56,7 @@ static DWORD g_windowed_style;
 typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
 static YaatBitmap g_background_bitmap;
 static YaatBitmap g_player_bitmap;
+static YaatBitmap g_walkmask_bitmap;
 
 static void yaat_runtime_join_path(char *dst, size_t dst_size,
                                    const char *left, const char *right);
@@ -404,6 +405,79 @@ static int yaat_draw_runtime_background(void)
     }
 
     return 1;
+}
+
+static int yaat_load_runtime_walkmask(void)
+{
+    char path[YAAT_ASSET_MAX_PATH * 2];
+
+    if (!g_runtime_load.ok || g_runtime_load.room.room_path[0] == '\0' ||
+        g_runtime_load.room.walkmask[0] == '\0') {
+        yaat_unload_bitmap(&g_walkmask_bitmap);
+        return 0;
+    }
+
+    yaat_runtime_join_path(path, sizeof(path),
+                           yaat_runtime_logical_path(g_runtime_load.room.room_path),
+                           g_runtime_load.room.walkmask);
+    return yaat_load_bmp(&g_walkmask_bitmap, path);
+}
+
+static int yaat_is_walkable_at(int x, int y)
+{
+    int mask_x;
+    int mask_y;
+    unsigned long pixel;
+    unsigned long red;
+    unsigned long green;
+    unsigned long blue;
+
+    if (!g_runtime_load.ok || g_runtime_load.room.walkmask[0] == '\0') {
+        return 1;
+    }
+    if (!yaat_load_runtime_walkmask()) {
+        return 1;
+    }
+
+    if (x < 0 || y < 0 || x >= YAAT_BACKBUFFER_WIDTH || y >= YAAT_PLAYFIELD_HEIGHT) {
+        return 0;
+    }
+
+    mask_x = x;
+    mask_y = y;
+    if (g_walkmask_bitmap.width != YAAT_BACKBUFFER_WIDTH) {
+        mask_x = (x * g_walkmask_bitmap.width) / YAAT_BACKBUFFER_WIDTH;
+    }
+    if (g_walkmask_bitmap.height != YAAT_PLAYFIELD_HEIGHT) {
+        mask_y = (y * g_walkmask_bitmap.height) / YAAT_PLAYFIELD_HEIGHT;
+    }
+    if (mask_x < 0 || mask_y < 0 ||
+        mask_x >= g_walkmask_bitmap.width || mask_y >= g_walkmask_bitmap.height) {
+        return 0;
+    }
+
+    pixel = g_walkmask_bitmap.pixels[(mask_y * g_walkmask_bitmap.width) + mask_x];
+    red = (pixel >> 16) & 0xff;
+    green = (pixel >> 8) & 0xff;
+    blue = pixel & 0xff;
+    return red + green + blue >= 128;
+}
+
+static void yaat_set_player_target(int x, int y)
+{
+    x = yaat_clamp_int(x, YAAT_PLAYER_WIDTH / 2,
+                       YAAT_BACKBUFFER_WIDTH - (YAAT_PLAYER_WIDTH / 2));
+    y = yaat_clamp_int(y, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
+    if (!yaat_is_walkable_at(x, y)) {
+        return;
+    }
+    if (x < g_player_x) {
+        g_player_facing_right = 0;
+    } else if (x > g_player_x) {
+        g_player_facing_right = 1;
+    }
+    g_target_x = x;
+    g_target_y = y;
 }
 
 static void yaat_draw_player_placeholder(void)
@@ -933,29 +1007,43 @@ static void yaat_update_player(void)
 {
     int dx;
     int dy;
+    int next_x;
+    int next_y;
 
     g_target_x = yaat_clamp_int(g_target_x, YAAT_PLAYER_WIDTH / 2,
                                 YAAT_BACKBUFFER_WIDTH - (YAAT_PLAYER_WIDTH / 2));
     g_target_y = yaat_clamp_int(g_target_y, YAAT_PLAYER_HEIGHT,
                                 YAAT_PLAYFIELD_HEIGHT - 1);
+    if (!yaat_is_walkable_at(g_target_x, g_target_y)) {
+        g_target_x = g_player_x;
+        g_target_y = g_player_y;
+    }
     dx = g_target_x - g_player_x;
     dy = g_target_y - g_player_y;
     if (dx > YAAT_PLAYER_SPEED_PIXELS) dx = YAAT_PLAYER_SPEED_PIXELS; else if (dx < -YAAT_PLAYER_SPEED_PIXELS) dx = -YAAT_PLAYER_SPEED_PIXELS;
     if (dy > YAAT_PLAYER_SPEED_PIXELS) dy = YAAT_PLAYER_SPEED_PIXELS; else if (dy < -YAAT_PLAYER_SPEED_PIXELS) dy = -YAAT_PLAYER_SPEED_PIXELS;
-    g_player_x += dx; g_player_y += dy;
+    next_x = g_player_x + dx;
+    next_y = g_player_y + dy;
+    if (yaat_is_walkable_at(next_x, next_y)) {
+        g_player_x = next_x;
+        g_player_y = next_y;
+        return;
+    }
+    if (dx != 0 && yaat_is_walkable_at(next_x, g_player_y)) {
+        g_player_x = next_x;
+    } else {
+        g_target_x = g_player_x;
+    }
+    if (dy != 0 && yaat_is_walkable_at(g_player_x, next_y)) {
+        g_player_y = next_y;
+    } else {
+        g_target_y = g_player_y;
+    }
 }
 
 static void yaat_nudge_player_target(int dx, int dy)
 {
-    if (dx < 0) {
-        g_player_facing_right = 0;
-    } else if (dx > 0) {
-        g_player_facing_right = 1;
-    }
-    g_target_x = yaat_clamp_int(g_target_x + dx, YAAT_PLAYER_WIDTH / 2,
-                                YAAT_BACKBUFFER_WIDTH - (YAAT_PLAYER_WIDTH / 2));
-    g_target_y = yaat_clamp_int(g_target_y + dy, YAAT_PLAYER_HEIGHT,
-                                YAAT_PLAYFIELD_HEIGHT - 1);
+    yaat_set_player_target(g_target_x + dx, g_target_y + dy);
 }
 
 
@@ -1284,13 +1372,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y)
                                    &backbuffer_x, &backbuffer_y)) return;
     g_cursor_x = backbuffer_x;
     g_cursor_y = backbuffer_y;
-    if (backbuffer_x < g_player_x) {
-        g_player_facing_right = 0;
-    } else if (backbuffer_x > g_player_x) {
-        g_player_facing_right = 1;
-    }
-    g_target_x = backbuffer_x;
-    g_target_y = yaat_clamp_int(backbuffer_y, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
+    yaat_set_player_target(backbuffer_x, backbuffer_y);
     yaat_click_game(backbuffer_x, backbuffer_y);
 }
 
