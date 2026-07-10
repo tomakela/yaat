@@ -12,6 +12,9 @@ typedef struct YaatGameConfig {
     char rooms_path[YAAT_ASSET_MAX_PATH];
 } YaatGameConfig;
 
+static void yaat_join_path(char *dst, int dst_size, const char *left,
+                           const char *right);
+
 static void yaat_copy_string(char *dst, int dst_size, const char *src)
 {
     int i;
@@ -27,6 +30,66 @@ static void yaat_copy_string(char *dst, int dst_size, const char *src)
         dst[i] = src[i];
     }
     dst[i] = '\0';
+}
+
+
+void yaat_asset_store_init(YaatAssetStore *store, const char *root_path)
+{
+    if (store == 0) {
+        return;
+    }
+    yaat_copy_string(store->root_path, sizeof(store->root_path),
+                     root_path != 0 && root_path[0] != '\0' ? root_path : ".");
+}
+
+int yaat_asset_read_all(YaatAssetStore *store, const char *logical_path,
+                        unsigned char **data, size_t *size)
+{
+    char physical_path[YAAT_ASSET_MAX_PATH * 2];
+    FILE *file;
+    long file_size;
+    unsigned char *buffer;
+
+    if (data == 0 || size == 0) {
+        return 0;
+    }
+    *data = 0;
+    *size = 0;
+    if (store == 0 || logical_path == 0 || logical_path[0] == '\0' ||
+        strstr(logical_path, "..") != 0) {
+        return 0;
+    }
+
+    yaat_join_path(physical_path, sizeof(physical_path), store->root_path,
+                   logical_path);
+    file = fopen(physical_path, "rb");
+    if (file == 0) {
+        return 0;
+    }
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return 0;
+    }
+    file_size = ftell(file);
+    if (file_size < 0 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return 0;
+    }
+    buffer = (unsigned char *)malloc((size_t)file_size + 1);
+    if (buffer == 0) {
+        fclose(file);
+        return 0;
+    }
+    if (fread(buffer, 1, (size_t)file_size, file) != (size_t)file_size) {
+        free(buffer);
+        fclose(file);
+        return 0;
+    }
+    fclose(file);
+    buffer[file_size] = '\0';
+    *data = buffer;
+    *size = (size_t)file_size;
+    return 1;
 }
 
 static void yaat_set_error(YaatRuntimeLoadResult *result, const char *message,
