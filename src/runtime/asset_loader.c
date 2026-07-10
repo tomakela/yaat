@@ -10,6 +10,7 @@
 typedef struct YaatGameConfig {
     char first_room[YAAT_ASSET_MAX_NAME];
     char rooms_path[YAAT_ASSET_MAX_PATH];
+    YaatRuntimePlayer player;
 } YaatGameConfig;
 
 static void yaat_join_path(char *dst, int dst_size, const char *left,
@@ -285,8 +286,8 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatG
     char section[YAAT_ASSET_MAX_NAME];
     char error_path[YAAT_ASSET_MAX_PATH + YAAT_ASSET_MAX_PATH];
 
+    memset(config, 0, sizeof(*config));
     yaat_copy_string(config->rooms_path, sizeof(config->rooms_path), "rooms");
-    config->first_room[0] = '\0';
     section[0] = '\0';
 
     if (!yaat_asset_store_load(store, path, &buffer)) {
@@ -327,6 +328,18 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatG
         } else if (strcmp(section, "paths") == 0 &&
                    strcmp(yaat_trim(text), "rooms") == 0) {
             yaat_copy_string(config->rooms_path, sizeof(config->rooms_path),
+                             yaat_trim(equals + 1));
+        } else if (strcmp(section, "player") == 0 &&
+                   strcmp(yaat_trim(text), "idle") == 0) {
+            yaat_copy_string(config->player.idle, sizeof(config->player.idle),
+                             yaat_trim(equals + 1));
+        } else if (strcmp(section, "player") == 0 &&
+                   strcmp(yaat_trim(text), "walk_left") == 0) {
+            yaat_copy_string(config->player.walk_left, sizeof(config->player.walk_left),
+                             yaat_trim(equals + 1));
+        } else if (strcmp(section, "player") == 0 &&
+                   strcmp(yaat_trim(text), "walk_right") == 0) {
+            yaat_copy_string(config->player.walk_right, sizeof(config->player.walk_right),
                              yaat_trim(equals + 1));
         }
     }
@@ -573,6 +586,8 @@ void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
     if (!result->ok) {
         return;
     }
+
+    result->player = config.player;
 
     yaat_join_path(room_dir, sizeof(room_dir), config.rooms_path, config.first_room);
     yaat_join_path(room_ini, sizeof(room_ini), room_dir, "room.ini");
