@@ -1558,11 +1558,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
     WNDCLASSEXA window_class;
     HWND window;
     MSG message;
+    YaatAssetStore asset_store;
 
     (void)previous_instance;
     (void)command_line;
 
-    yaat_runtime_load_start_room("game/game.ini", &g_runtime_load);
+    yaat_asset_store_init_loose(&asset_store, "game");
+    yaat_runtime_load_start_room_from_store(&asset_store, &g_runtime_load);
 
     ZeroMemory(&window_class, sizeof(window_class));
     window_class.cbSize = sizeof(window_class); window_class.style = CS_HREDRAW | CS_VREDRAW; window_class.lpfnWndProc = yaat_window_proc;
