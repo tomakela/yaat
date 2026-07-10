@@ -56,6 +56,7 @@ static DWORD g_windowed_style;
 typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
 static YaatBitmap g_background_bitmap;
 static YaatBitmap g_player_bitmap;
+static unsigned long g_animation_clock_ms;
 
 static void yaat_runtime_join_path(char *dst, size_t dst_size,
                                    const char *left, const char *right);
@@ -463,6 +464,27 @@ static void yaat_draw_player(void)
     yaat_draw_bitmap(&g_player_bitmap, draw_x, draw_y);
 }
 
+
+static const char *yaat_runtime_object_sprite_for_time(YaatRuntimeObject *object)
+{
+    unsigned long frame_duration;
+    unsigned long frame_index;
+
+    if (object == 0) {
+        return "";
+    }
+    if (object->animation_frame_count <= 0 || object->animation_fps <= 0) {
+        return object->sprite;
+    }
+    frame_duration = 1000UL / (unsigned long)object->animation_fps;
+    if (frame_duration == 0) {
+        frame_duration = 1;
+    }
+    frame_index = (g_animation_clock_ms / frame_duration) %
+                  (unsigned long)object->animation_frame_count;
+    return object->animation_frames[frame_index];
+}
+
 static void yaat_draw_runtime_room(void)
 {
     int i;
@@ -508,21 +530,23 @@ static void yaat_draw_runtime_room(void)
         unsigned long object_color;
         YaatBitmap object_bitmap;
         char object_path[YAAT_ASSET_MAX_PATH * 2];
+        const char *object_sprite;
 
         object = &g_runtime_load.room.objects[i];
         if (!object->visible || object->width <= 0 || object->height <= 0) {
             continue;
         }
+        object_sprite = yaat_runtime_object_sprite_for_time(object);
         memset(&object_bitmap, 0, sizeof(object_bitmap));
         yaat_runtime_join_path(object_path, sizeof(object_path),
                                yaat_runtime_logical_path(g_runtime_load.room.room_path),
-                               object->sprite);
+                               object_sprite);
         if (yaat_load_bmp(&object_bitmap, object_path)) {
             yaat_draw_bitmap(&object_bitmap, object->x, object->y);
             yaat_unload_bitmap(&object_bitmap);
             continue;
         }
-        object_color = yaat_hash_color(object->sprite, 0x002f5f9eUL);
+        object_color = yaat_hash_color(object_sprite, 0x002f5f9eUL);
         yaat_draw_rect(&g_renderer, object->x, object->y,
                        object->width, object->height, 0x00202020UL);
         yaat_draw_rect(&g_renderer, object->x + 1, object->y + 1,
@@ -1372,7 +1396,7 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
                                          (int)(short)HIWORD(l_param));
         InvalidateRect(window, 0, FALSE); return 0;
     case WM_TIMER:
-        if (w_param == YAAT_FRAME_TIMER_ID) { yaat_update_player(); InvalidateRect(window, 0, FALSE); return 0; }
+        if (w_param == YAAT_FRAME_TIMER_ID) { g_animation_clock_ms += YAAT_FRAME_TIMER_MS; yaat_update_player(); InvalidateRect(window, 0, FALSE); return 0; }
         break;
     case WM_PAINT: {
         PAINTSTRUCT paint; HDC dc; RECT client_rect; YaatViewport viewport;

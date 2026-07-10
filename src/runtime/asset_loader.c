@@ -432,6 +432,36 @@ static void yaat_parse_rect(const char *value, int *x, int *y, int *width,
     }
 }
 
+
+static void yaat_parse_animation_frames(YaatRuntimeObject *object, const char *value)
+{
+    char frames[YAAT_LINE_MAX];
+    char *frame;
+    char *next;
+
+    if (object == 0 || value == 0) {
+        return;
+    }
+    object->animation_frame_count = 0;
+    yaat_copy_string(frames, sizeof(frames), value);
+    frame = frames;
+    while (frame != 0 && object->animation_frame_count < YAAT_ASSET_MAX_ANIMATION_FRAMES) {
+        next = strchr(frame, ';');
+        if (next != 0) {
+            *next = '\0';
+            ++next;
+        }
+        frame = yaat_trim(frame);
+        if (frame[0] != '\0') {
+            yaat_copy_string(object->animation_frames[object->animation_frame_count],
+                             sizeof(object->animation_frames[object->animation_frame_count]),
+                             frame);
+            ++object->animation_frame_count;
+        }
+        frame = next;
+    }
+}
+
 static void yaat_load_room_objects(YaatAssetStore *store, const char *path, YaatRuntimeRoom *room)
 {
     YaatAssetBuffer buffer;
@@ -462,6 +492,7 @@ static void yaat_load_room_objects(YaatAssetStore *store, const char *path, Yaat
                 object = &room->objects[room->object_count++];
                 memset(object, 0, sizeof(*object));
                 object->visible = 1;
+                object->animation_fps = 0;
                 yaat_copy_string(object->id, sizeof(object->id), text + 1);
             }
             continue;
@@ -480,6 +511,12 @@ static void yaat_load_room_objects(YaatAssetStore *store, const char *path, Yaat
             yaat_copy_string(object->name, sizeof(object->name), yaat_trim(equals));
         } else if (strcmp(text, "sprite") == 0) {
             yaat_copy_string(object->sprite, sizeof(object->sprite), yaat_trim(equals));
+        } else if (strcmp(text, "animation") == 0) {
+            yaat_copy_string(object->animation, sizeof(object->animation), yaat_trim(equals));
+        } else if (strcmp(text, "animation_frames") == 0) {
+            yaat_parse_animation_frames(object, yaat_trim(equals));
+        } else if (strcmp(text, "animation_fps") == 0) {
+            object->animation_fps = atoi(yaat_trim(equals));
         } else if (strcmp(text, "x") == 0) {
             object->x = atoi(yaat_trim(equals));
         } else if (strcmp(text, "y") == 0) {
