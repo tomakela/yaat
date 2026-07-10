@@ -115,6 +115,9 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_IF;
             cmd->condition_op = YAAT_COND_TRUTHY;
             parser_copy(cmd->a, sizeof(cmd->a), cond->lexeme, cond->length);
+            if ((yaat_token_is(cond, "has") || yaat_token_is(cond, "inventory")) && yaat_peek(cursor)->type != SCRIPT_TOKEN_LEFT_BRACE) {
+                token = yaat_advance_token(cursor);
+                parser_copy(cmd->b, sizeof(cmd->b), token->lexeme, token->length);
             if (yaat_is_condition_op(yaat_peek(cursor)->type)) {
                 ScriptToken *op = yaat_advance_token(cursor);
                 ScriptToken *rhs = yaat_advance_token(cursor);
@@ -149,6 +152,18 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
         } else if (yaat_token_is(token, "take")) {
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_TAKE;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "drop")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_DROP;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "remove_inventory")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_REMOVE_INVENTORY;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "consume")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_CONSUME;
             parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
         } else if (yaat_token_is(token, "hide")) {
             token = yaat_advance_token(cursor);
