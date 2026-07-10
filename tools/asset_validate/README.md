@@ -1,7 +1,7 @@
 # YAAT offline asset validator
 
-`asset_validate.c` is a standalone development-time checker for the loose `game/`
-asset tree described in `docs/asset-structure.md`. Runtime engine code should not
+`asset_validate.c` is a standalone development-time checker for YAAT assets
+as described in `docs/asset-structure.md`. Runtime engine code should not
 include or link this tool.
 
 This is a modern host-only developer tool, not a Windows 95 runtime component.
@@ -18,6 +18,16 @@ cc -std=c99 -Wall -Wextra -pedantic -o tools/asset_validate/asset_validate tools
 ./tools/asset_validate/asset_validate game
 ```
 
-The validator checks for required top-level assets, room folders and metadata
-references, lowercase ASCII path recommendations, the 120-character runtime path
-recommendation, and a small allow-list of known runtime file extensions.
+The validator accepts either a loose `game/` directory or a single `.dat` ZIP
+archive. When pointed at a loose tree, it also discovers `game.dat` and
+`patchNNNN.dat` files in `game/packed/` or beside `game/`, applies them in
+ascending patch number, and validates the final effective asset view. Later
+sources intentionally override earlier entries, so patch overrides are reported
+as warnings for review.
+
+Checks include required `game.ini`, `game.first_room`, first-room `room.ini`,
+room metadata references, normalized path safety, lowercase/length/extension
+recommendations, duplicate entries within archives, unsupported ZIP features,
+and oversized files before decompression. ZIP archives are inspected offline
+from their central directory; stored entries can also be read for effective
+`game.ini` and `room.ini` checks without adding any runtime dependencies.
