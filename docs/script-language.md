@@ -367,7 +367,7 @@ goto cellar
 
 ### take
 
-Add an item to inventory and usually remove it from the room.
+Add an item to inventory. This legacy command does not change room entity visibility; prefer `pickup` when the script is moving a visible room object into inventory.
 
 ```text
 take <item>
@@ -377,6 +377,34 @@ Example:
 
 ```text
 take brass_key
+```
+
+### pickup
+
+Move an object in the current room into inventory. The runtime hides the named room object and adds the inventory item.
+
+```text
+pickup <object_id> <item_id>
+```
+
+Example:
+
+```text
+pickup brass_key brass_key
+```
+
+### drop
+
+Move an inventory item back into the current room. The runtime removes the inventory item, clears it if selected, and shows a predeclared room object at its authored position. Scripts should declare the droppable object in the room, usually hidden until `drop` runs.
+
+```text
+drop <item_id> <object_id>
+```
+
+Example:
+
+```text
+drop brass_key brass_key
 ```
 
 ### give
@@ -471,7 +499,7 @@ shake 350 6
 
 ## Control flow
 
-The only control-flow construct in version 0 is `if` / `else`.
+The control-flow construct in version 0 is `if` / `else`.
 
 ```text
 if <condition> {
@@ -503,10 +531,10 @@ This is equivalent to checking `door_locked == true`.
 
 ### Equality checks
 
-Simple equality checks compare a variable to a value:
+Simple comparisons compare a variable to a value:
 
 ```text
-if <id> == <value> {
+if <id> <op> <value> {
   ...
 }
 ```
@@ -527,7 +555,7 @@ if coins == 3 {
 }
 ```
 
-Version 0 only defines equality with `==`. It does not include `<`, `>`, `<=`, `>=`, boolean `and`, boolean `or`, or boolean `not`.
+Version 0 defines `==`, `!=`, `<`, `<=`, `>`, and `>=` comparisons. Boolean `and`, boolean `or`, and boolean `not` are intentionally not included.
 
 ## Complete sample script
 
@@ -557,8 +585,7 @@ room hall {
     }
 
     on click {
-      take brass_key
-      hide brass_key
+      pickup brass_key brass_key
       set took_key = true
       say player "I picked up the brass key."
     }
@@ -647,7 +674,7 @@ room treasure_room {
 
 A first C implementation can parse this language with a small tokenizer and recursive-descent parser:
 
-1. Tokenize identifiers, strings, integers, `{`, `}`, `,`, `=`, and `==`.
+1. Tokenize identifiers, strings, integers, `{`, `}`, `,`, `=`, `==`, `!=`, `<`, `<=`, `>`, and `>=`.
 2. Parse top-level declarations until end of file.
 3. Parse blocks by reading declarations, fields, and handlers until `}`.
 4. Parse command blocks as lists of commands and `if` statements.

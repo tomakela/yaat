@@ -85,6 +85,28 @@ static int g_shake_offset_y;
 static YaatRuntimeObjectMutation g_runtime_object_mutations[YAAT_MAX_RUNTIME_OBJECT_MUTATIONS];
 static int g_runtime_object_mutation_count;
 
+#define YAAT_SAVE_STATE_VERSION 1
+#define YAAT_SAVE_PATH "yaat_save_state.txt"
+#define YAAT_MAX_SAVED_RUNTIME_OBJECTS (YAAT_MAX_ROOMS * YAAT_ASSET_MAX_OBJECTS)
+
+typedef struct YaatSavedRuntimeObjectState {
+    char room_id[YAAT_ASSET_MAX_NAME];
+    char object_id[YAAT_ASSET_MAX_NAME];
+    int x;
+    int y;
+    int width;
+    int height;
+    int visible;
+    int transparency_mode;
+    unsigned long transparency_color_key;
+    int transparent_color_enabled;
+    unsigned long transparent_color;
+} YaatSavedRuntimeObjectState;
+
+static YaatSavedRuntimeObjectState g_saved_runtime_objects[YAAT_MAX_SAVED_RUNTIME_OBJECTS];
+static int g_saved_runtime_object_count;
+static int g_suppress_runtime_state_capture;
+
 typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
 typedef struct YaatViewport { int x; int y; int width; int height; } YaatViewport;
 typedef struct YaatBitmap { unsigned long *pixels; int width; int height; int has_alpha; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
@@ -1337,20 +1359,52 @@ static int yaat_find_var(const char *name)
     return -1;
 }
 
-static int yaat_get_var(const char *name)
+static YaatValue yaat_get_var(const char *name)
 {
     int idx = yaat_find_var(name);
-    if (idx < 0) return 0;
-    return g_vars[idx].bool_value;
+    if (idx < 0) return yaat_value_bool(0);
+    return g_vars[idx].value;
 }
-static void yaat_set_var(const char *name, int value)
+
+static int yaat_value_truthy(const YaatValue *value)
+{
+    if (!value) return 0;
+    if (value->kind == YAAT_VALUE_BOOL) return value->bool_value != 0;
+    if (value->kind == YAAT_VALUE_INT) return value->int_value != 0;
+    return value->string_value[0] != '\0';
+}
+
+static int yaat_compare_values(const YaatValue *left, YaatConditionOp op, const YaatValue *right)
+{
+    int cmp = 0;
+    if (op == YAAT_COND_TRUTHY) return yaat_value_truthy(left);
+    if (!left || !right) return 0;
+    if (left->kind == YAAT_VALUE_INT && right->kind == YAAT_VALUE_INT) {
+        if (left->int_value < right->int_value) cmp = -1;
+        else if (left->int_value > right->int_value) cmp = 1;
+    } else if (left->kind == YAAT_VALUE_BOOL && right->kind == YAAT_VALUE_BOOL) {
+        if (left->bool_value < right->bool_value) cmp = -1;
+        else if (left->bool_value > right->bool_value) cmp = 1;
+    } else {
+        cmp = strcmp(left->string_value, right->string_value);
+    }
+    if (op == YAAT_COND_EQ) return cmp == 0;
+    if (op == YAAT_COND_NE) return cmp != 0;
+    if (op == YAAT_COND_LT) return cmp < 0;
+    if (op == YAAT_COND_LTE) return cmp <= 0;
+    if (op == YAAT_COND_GT) return cmp > 0;
+    if (op == YAAT_COND_GTE) return cmp >= 0;
+    return 0;
+}
+
+static void yaat_set_var_value(const char *name, const YaatValue *value)
 {
     int idx = yaat_find_var(name);
     if (idx < 0 && g_var_count < YAAT_MAX_VARS) {
         idx = g_var_count++;
         yaat_copy(g_vars[idx].name, sizeof(g_vars[idx].name), name, strlen(name));
     }
-    if (idx >= 0) g_vars[idx].bool_value = value;
+    if (idx >= 0 && value) g_vars[idx].value = *value;
 }
 
 static int yaat_has_inventory(const char *item)
@@ -1367,11 +1421,293 @@ static void yaat_take_inventory(const char *item)
     }
 }
 
+static void yaat_remove_inventory(const char *item)
+{
+    int i;
+    for (i = 0; i < g_inventory_count; ++i) {
+        if (strcmp(g_inventory[i], item) == 0) {
+            int j;
+            for (j = i; j + 1 < g_inventory_count; ++j) {
+                memmove(g_inventory[j], g_inventory[j + 1], sizeof(g_inventory[j]));
+            }
+            if (g_inventory_count > 0) --g_inventory_count;
+            g_inventory[g_inventory_count][0] = '\0';
+            if (strcmp(g_selected_inventory, item) == 0) g_selected_inventory[0] = '\0';
+            return;
+        }
+    }
+    int found = -1;
+    if (item == 0 || item[0] == '\0') return;
+    for (i = 0; i < g_inventory_count; ++i) {
+        if (strcmp(g_inventory[i], item) == 0) {
+            found = i;
+            break;
+        }
+    }
+    if (found < 0) return;
+    for (i = found; i + 1 < g_inventory_count; ++i) {
+        yaat_copy(g_inventory[i], 32, g_inventory[i + 1], strlen(g_inventory[i + 1]));
+    }
+    if (g_inventory_count > 0) {
+        g_inventory_count--;
+        g_inventory[g_inventory_count][0] = '\0';
+    }
+    if (strcmp(g_selected_inventory, item) == 0) g_selected_inventory[0] = '\0';
+}
+
+static int yaat_eval_condition(const YaatCommand *cmd)
+{
+    if ((strcmp(cmd->a, "has") == 0 || strcmp(cmd->a, "inventory") == 0) && cmd->b[0] != '\0') {
+        return yaat_has_inventory(cmd->b);
+    }
+    return yaat_get_var(cmd->a);
+static int yaat_saved_runtime_object_index(const char *room_id,
+                                           const char *object_id)
+{
+    int i;
+    for (i = 0; i < g_saved_runtime_object_count; ++i) {
+        if (strcmp(g_saved_runtime_objects[i].room_id, room_id) == 0 &&
+            strcmp(g_saved_runtime_objects[i].object_id, object_id) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void yaat_capture_runtime_object_state(void)
+{
+    int i;
+
+    if (g_suppress_runtime_state_capture) return;
+    if (!g_runtime_load.ok || g_runtime_load.room.id[0] == '\0') return;
+    for (i = 0; i < g_runtime_load.room.object_count; ++i) {
+        YaatRuntimeObject *object = &g_runtime_load.room.objects[i];
+        int idx;
+        if (object->id[0] == '\0') continue;
+        idx = yaat_saved_runtime_object_index(g_runtime_load.room.id, object->id);
+        if (idx < 0) {
+            if (g_saved_runtime_object_count >= YAAT_MAX_SAVED_RUNTIME_OBJECTS) continue;
+            idx = g_saved_runtime_object_count++;
+            memset(&g_saved_runtime_objects[idx], 0, sizeof(g_saved_runtime_objects[idx]));
+            yaat_copy(g_saved_runtime_objects[idx].room_id,
+                      sizeof(g_saved_runtime_objects[idx].room_id),
+                      g_runtime_load.room.id, strlen(g_runtime_load.room.id));
+            yaat_copy(g_saved_runtime_objects[idx].object_id,
+                      sizeof(g_saved_runtime_objects[idx].object_id),
+                      object->id, strlen(object->id));
+        }
+        g_saved_runtime_objects[idx].x = object->x;
+        g_saved_runtime_objects[idx].y = object->y;
+        g_saved_runtime_objects[idx].width = object->width;
+        g_saved_runtime_objects[idx].height = object->height;
+        g_saved_runtime_objects[idx].visible = object->visible;
+        g_saved_runtime_objects[idx].transparency_mode = (int)object->transparency.mode;
+        g_saved_runtime_objects[idx].transparency_color_key = object->transparency.color_key;
+        g_saved_runtime_objects[idx].transparent_color_enabled = object->transparent_color_enabled;
+        g_saved_runtime_objects[idx].transparent_color = object->transparent_color;
+    }
+}
+
+static void yaat_apply_runtime_object_state(void)
+{
+    int i;
+
+    if (!g_runtime_load.ok || g_runtime_load.room.id[0] == '\0') return;
+    for (i = 0; i < g_runtime_load.room.object_count; ++i) {
+        YaatRuntimeObject *object = &g_runtime_load.room.objects[i];
+        int idx;
+        if (object->id[0] == '\0') continue;
+        idx = yaat_saved_runtime_object_index(g_runtime_load.room.id, object->id);
+        if (idx < 0) continue;
+        object->x = g_saved_runtime_objects[idx].x;
+        object->y = g_saved_runtime_objects[idx].y;
+        object->width = g_saved_runtime_objects[idx].width;
+        object->height = g_saved_runtime_objects[idx].height;
+        object->visible = g_saved_runtime_objects[idx].visible;
+        object->transparency.mode =
+            (YaatTransparencyMode)g_saved_runtime_objects[idx].transparency_mode;
+        object->transparency.color_key =
+            g_saved_runtime_objects[idx].transparency_color_key;
+        object->transparent_color_enabled =
+            g_saved_runtime_objects[idx].transparent_color_enabled;
+        object->transparent_color = g_saved_runtime_objects[idx].transparent_color;
+    }
+}
+
 static int yaat_room_index_by_id(const char *id)
 {
     int i;
     for (i = 0; i < g_room_count; ++i) if (strcmp(g_rooms[i].id, id) == 0) return i;
     return -1;
+}
+
+static YaatEntity *yaat_entity_by_id(YaatRoom *room, const char *id);
+static void yaat_runtime_request_room_assets(const char *room_id);
+
+static int yaat_save_script_state(const char *path)
+{
+    FILE *file;
+    int i;
+    int j;
+
+    yaat_capture_runtime_object_state();
+    file = fopen(path, "w");
+    if (file == 0) return 0;
+
+    fprintf(file, "YAAT_SCRIPT_STATE %d\n", YAAT_SAVE_STATE_VERSION);
+    fprintf(file, "player %d %d %d %d %d %s\n", g_player_x, g_player_y,
+            g_target_x, g_target_y, g_player_facing_right,
+            g_player_animation_id);
+    fprintf(file, "current_room %s\n",
+            (g_current_room >= 0 && g_current_room < g_room_count) ?
+            g_rooms[g_current_room].id : "");
+    fprintf(file, "selected_verb %s\n", g_selected_verb);
+    fprintf(file, "selected_inventory %s\n",
+            g_selected_inventory[0] != '\0' ? g_selected_inventory : "-");
+
+    fprintf(file, "vars %d\n", g_var_count);
+    for (i = 0; i < g_var_count; ++i) {
+        fprintf(file, "var %s %d\n", g_vars[i].name, g_vars[i].bool_value);
+    }
+
+    fprintf(file, "inventory %d\n", g_inventory_count);
+    for (i = 0; i < g_inventory_count; ++i) {
+        fprintf(file, "item %s\n", g_inventory[i]);
+    }
+
+    fprintf(file, "entities\n");
+    for (i = 0; i < g_room_count; ++i) {
+        for (j = 0; j < g_rooms[i].entity_count; ++j) {
+            YaatEntity *entity = &g_rooms[i].entities[j];
+            fprintf(file, "entity %s %s %d %d %d %d %d\n",
+                    g_rooms[i].id, entity->id, entity->x, entity->y,
+                    entity->w, entity->h, entity->visible);
+        }
+    }
+
+    fprintf(file, "runtime_objects %d\n", g_saved_runtime_object_count);
+    for (i = 0; i < g_saved_runtime_object_count; ++i) {
+        YaatSavedRuntimeObjectState *object = &g_saved_runtime_objects[i];
+        fprintf(file, "runtime_object %s %s %d %d %d %d %d %d %lu %d %lu\n",
+                object->room_id, object->object_id, object->x, object->y,
+                object->width, object->height, object->visible,
+                object->transparency_mode, object->transparency_color_key,
+                object->transparent_color_enabled, object->transparent_color);
+    }
+
+    fclose(file);
+    return 1;
+}
+
+static int yaat_load_script_state(const char *path)
+{
+    FILE *file;
+    char key[64];
+    char value[YAAT_ASSET_MAX_NAME];
+    int version;
+    int expected;
+    int i;
+
+    file = fopen(path, "r");
+    if (file == 0) return 0;
+    if (fscanf(file, "%63s %d", key, &version) != 2 ||
+        strcmp(key, "YAAT_SCRIPT_STATE") != 0 || version != YAAT_SAVE_STATE_VERSION) {
+        fclose(file);
+        return 0;
+    }
+
+    g_var_count = 0;
+    g_inventory_count = 0;
+    g_selected_inventory[0] = '\0';
+    g_saved_runtime_object_count = 0;
+
+    while (fscanf(file, "%63s", key) == 1) {
+        if (strcmp(key, "player") == 0) {
+            fscanf(file, "%d %d %d %d %d %63s", &g_player_x, &g_player_y,
+                   &g_target_x, &g_target_y, &g_player_facing_right,
+                   g_player_animation_id);
+        } else if (strcmp(key, "current_room") == 0) {
+            if (fscanf(file, "%63s", value) == 1) {
+                int idx = yaat_room_index_by_id(value);
+                if (idx >= 0) g_current_room = idx;
+            }
+        } else if (strcmp(key, "selected_verb") == 0) {
+            if (fscanf(file, "%31s", g_selected_verb) != 1) g_selected_verb[0] = '\0';
+        } else if (strcmp(key, "selected_inventory") == 0) {
+            if (fscanf(file, "%31s", g_selected_inventory) == 1 &&
+                strcmp(g_selected_inventory, "-") == 0) {
+                g_selected_inventory[0] = '\0';
+            }
+        } else if (strcmp(key, "vars") == 0) {
+            fscanf(file, "%d", &expected);
+            (void)expected;
+        } else if (strcmp(key, "var") == 0) {
+            int bool_value;
+            if (fscanf(file, "%31s %d", value, &bool_value) == 2) {
+                yaat_set_var(value, bool_value);
+            }
+        } else if (strcmp(key, "inventory") == 0) {
+            fscanf(file, "%d", &expected);
+            (void)expected;
+        } else if (strcmp(key, "item") == 0) {
+            if (fscanf(file, "%31s", value) == 1) yaat_take_inventory(value);
+        } else if (strcmp(key, "entities") == 0) {
+            continue;
+        } else if (strcmp(key, "entity") == 0) {
+            char room_id[32];
+            char entity_id[32];
+            int room_index;
+            int x;
+            int y;
+            int w;
+            int h;
+            int visible;
+            if (fscanf(file, "%31s %31s %d %d %d %d %d", room_id, entity_id,
+                       &x, &y, &w, &h, &visible) == 7) {
+                room_index = yaat_room_index_by_id(room_id);
+                if (room_index >= 0) {
+                    YaatEntity *entity = yaat_entity_by_id(&g_rooms[room_index], entity_id);
+                    if (entity != 0) {
+                        entity->x = x;
+                        entity->y = y;
+                        entity->w = w;
+                        entity->h = h;
+                        entity->visible = visible;
+                    }
+                }
+            }
+        } else if (strcmp(key, "runtime_objects") == 0) {
+            fscanf(file, "%d", &expected);
+            (void)expected;
+        } else if (strcmp(key, "runtime_object") == 0) {
+            if (g_saved_runtime_object_count < YAAT_MAX_SAVED_RUNTIME_OBJECTS) {
+                YaatSavedRuntimeObjectState *object =
+                    &g_saved_runtime_objects[g_saved_runtime_object_count];
+                if (fscanf(file, "%63s %63s %d %d %d %d %d %d %lu %d %lu",
+                           object->room_id, object->object_id, &object->x,
+                           &object->y, &object->width, &object->height,
+                           &object->visible, &object->transparency_mode,
+                           &object->transparency_color_key,
+                           &object->transparent_color_enabled,
+                           &object->transparent_color) == 11) {
+                    ++g_saved_runtime_object_count;
+                }
+            }
+        }
+    }
+    fclose(file);
+
+    if (g_room_count > 0) {
+        g_suppress_runtime_state_capture = 1;
+        yaat_runtime_request_room_assets(g_rooms[g_current_room].id);
+        g_suppress_runtime_state_capture = 0;
+        yaat_apply_runtime_object_state();
+    }
+    for (i = 0; i < g_inventory_count; ++i) {
+        if (strcmp(g_inventory[i], g_selected_inventory) == 0) break;
+    }
+    if (i == g_inventory_count) g_selected_inventory[0] = '\0';
+    return 1;
 }
 
 static YaatEntity *yaat_entity_by_id(YaatRoom *room, const char *id)
@@ -1522,7 +1858,7 @@ static void yaat_execute_commands(int first, int count)
             yaat_copy(g_dialogue_text, sizeof(g_dialogue_text), cmd->b, strlen(cmd->b));
             g_dialogue_visible = 1;
         } else if (cmd->kind == YAAT_CMD_SET) {
-            yaat_set_var(cmd->a, cmd->bool_value);
+            yaat_set_var_value(cmd->a, &cmd->value);
         } else if (cmd->kind == YAAT_CMD_GOTO) {
             int idx = yaat_room_index_by_id(cmd->a);
             if (idx >= 0) yaat_enter_room(idx);
@@ -1530,6 +1866,18 @@ static void yaat_execute_commands(int first, int count)
             MessageBeep(MB_OK);
         } else if (cmd->kind == YAAT_CMD_TAKE) {
             yaat_take_inventory(cmd->a);
+        } else if (cmd->kind == YAAT_CMD_PICKUP) {
+            YaatEntity *entity = yaat_entity_by_id(&g_rooms[g_current_room], cmd->a);
+            if (entity) entity->visible = 0;
+            yaat_take_inventory(cmd->b);
+        } else if (cmd->kind == YAAT_CMD_DROP) {
+            YaatEntity *entity = yaat_entity_by_id(&g_rooms[g_current_room], cmd->b);
+            if (yaat_has_inventory(cmd->a)) {
+                yaat_remove_inventory(cmd->a);
+                if (entity) entity->visible = 1;
+            }
+        } else if (cmd->kind == YAAT_CMD_DROP || cmd->kind == YAAT_CMD_REMOVE_INVENTORY || cmd->kind == YAAT_CMD_CONSUME) {
+            yaat_remove_inventory(cmd->a);
         } else if (cmd->kind == YAAT_CMD_HIDE) {
             yaat_set_object_visible(cmd->a, 0);
         } else if (cmd->kind == YAAT_CMD_SHOW) {
@@ -1539,7 +1887,9 @@ static void yaat_execute_commands(int first, int count)
         } else if (cmd->kind == YAAT_CMD_SET_OBJECT_SPRITE) {
             yaat_set_object_sprite(cmd->a, cmd->b);
         } else if (cmd->kind == YAAT_CMD_IF) {
-            if (yaat_get_var(cmd->a)) yaat_execute_commands(cmd->first_child, cmd->child_count);
+            if (yaat_eval_condition(cmd)) yaat_execute_commands(cmd->first_child, cmd->child_count);
+            YaatValue value = yaat_get_var(cmd->a);
+            if (yaat_compare_values(&value, cmd->condition_op, &cmd->value)) yaat_execute_commands(cmd->first_child, cmd->child_count);
             else yaat_execute_commands(cmd->first_else_child, cmd->else_child_count);
         } else if (cmd->kind == YAAT_CMD_SHAKE) {
             yaat_start_shake(cmd->bool_value, cmd->int_value);
@@ -1557,10 +1907,12 @@ static void yaat_runtime_request_room_assets(const char *room_id)
     YaatRuntimeLoadResult load_result;
 
     if (room_id == 0 || room_id[0] == '\0') return;
+    yaat_capture_runtime_object_state();
     yaat_runtime_load_room_from_store(&g_runtime_asset_store, room_id, &load_result);
     g_runtime_load = load_result;
     yaat_apply_runtime_object_mutations();
     yaat_load_runtime_hotspots();
+    yaat_apply_runtime_object_state();
 }
 
 static void yaat_enter_room(int room_index)
@@ -1588,7 +1940,7 @@ static void yaat_import_package(YaatScriptPackage *package)
     int j;
     int command_base = g_command_count;
     if (!package) return;
-    for (i = 0; i < package->var_count; ++i) yaat_set_var(package->vars[i].name, package->vars[i].bool_value);
+    for (i = 0; i < package->var_count; ++i) yaat_set_var_value(package->vars[i].name, &package->vars[i].value);
     for (i = 0; i < package->command_count && g_command_count < YAAT_MAX_COMMANDS; ++i) {
         YaatCommand command = package->commands[i];
         if (command.child_count > 0) command.first_child += command_base;
@@ -1966,11 +2318,13 @@ static void yaat_runtime_change_room(const YaatRuntimeHotspot *hotspot)
     if (hotspot == 0 || hotspot->target_room[0] == '\0') return;
     player_x = hotspot->has_target_x ? hotspot->target_x : YAAT_BACKBUFFER_WIDTH / 2;
     player_y = hotspot->has_target_y ? hotspot->target_y : YAAT_PLAYFIELD_HEIGHT - 20;
+    yaat_capture_runtime_object_state();
     yaat_runtime_load_room_from_store(&g_asset_store, hotspot->target_room, &next_load);
     if (!next_load.ok) return;
 
     g_runtime_load = next_load;
     yaat_apply_runtime_object_mutations();
+    yaat_apply_runtime_object_state();
     script_room_index = yaat_room_index_by_id(g_runtime_load.room.id);
     if (script_room_index >= 0) g_current_room = script_room_index;
     g_player_x = player_x;
@@ -2284,6 +2638,15 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         if (w_param == VK_RETURN && (GetKeyState(VK_MENU) & 0x8000)) {
             if ((l_param & 0x40000000L) != 0) return 0;
             yaat_toggle_fullscreen(window);
+            return 0;
+        }
+        if ((GetKeyState(VK_CONTROL) & 0x8000) && w_param == 'S') {
+            yaat_save_script_state(YAAT_SAVE_PATH);
+            return 0;
+        }
+        if ((GetKeyState(VK_CONTROL) & 0x8000) && w_param == 'L') {
+            yaat_load_script_state(YAAT_SAVE_PATH);
+            InvalidateRect(window, 0, FALSE);
             return 0;
         }
         if (w_param == VK_LEFT) yaat_nudge_player_target(-16, 0);

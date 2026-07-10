@@ -21,6 +21,28 @@ static int rs(FILE *f, char *s, int n)
     return 1;
 }
 
+static void wv(FILE *f, const YaatValue *v)
+{
+    w16(f, (unsigned)v->kind);
+    w16(f, (unsigned)v->bool_value);
+    w32(f, (unsigned long)v->int_value);
+    ws(f, v->string_value, 96);
+}
+
+static int rv(FILE *f, YaatValue *value)
+{
+    unsigned v;
+    unsigned long ul;
+    if (!r16(f, &v) || v > YAAT_VALUE_STRING) return 0;
+    value->kind = (YaatValueKind)v;
+    if (!r16(f, &v)) return 0;
+    value->bool_value = (int)v;
+    if (!r32(f, &ul)) return 0;
+    value->int_value = (int)ul;
+    if (!rs(f, value->string_value, 96)) return 0;
+    return 1;
+}
+
 static void we(FILE *f, const YaatEvent *e)
 {
     ws(f, e->name, 32);
@@ -54,6 +76,8 @@ static void wc(FILE *f, const YaatCommand *c)
     ws(f, c->b, 96);
     w16(f, (unsigned)c->bool_value);
     w16(f, (unsigned)c->int_value);
+    wv(f, &c->value);
+    w16(f, (unsigned)c->condition_op);
     w16(f, (unsigned)c->first_child);
     w16(f, (unsigned)c->child_count);
     w16(f, (unsigned)c->first_else_child);
@@ -69,6 +93,9 @@ static int rc(FILE *f, YaatCommand *c)
     c->bool_value = (int)v;
     if (!r16(f, &v)) return 0;
     c->int_value = (int)v;
+    if (!rv(f, &c->value)) return 0;
+    if (!r16(f, &v) || v > YAAT_COND_GTE) return 0;
+    c->condition_op = (YaatConditionOp)v;
     if (!r16(f, &v)) return 0;
     c->first_child = (int)v;
     if (!r16(f, &v)) return 0;
@@ -83,6 +110,8 @@ static int rc(FILE *f, YaatCommand *c)
 static int valid_command(const YaatCommand *c, const YaatScriptPackage *p)
 {
     if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_SET_OBJECT_SPRITE) return 0;
+    if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_DROP) return 0;
+    if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_CONSUME) return 0;
     if (c->child_count < 0 || c->first_child < 0 ||
         c->else_child_count < 0 || c->first_else_child < 0) return 0;
     if (c->child_count > 0 &&
@@ -106,7 +135,7 @@ int yaat_bytecode_write_file(const char *path, const YaatScriptPackage *p)
     w16(f, (unsigned)p->room_count);
     w16(f, (unsigned)p->command_count);
     w16(f, 0);
-    for (i = 0; i < p->var_count; ++i) { ws(f, p->vars[i].name, 32); w16(f, (unsigned)p->vars[i].bool_value); }
+    for (i = 0; i < p->var_count; ++i) { ws(f, p->vars[i].name, 32); wv(f, &p->vars[i].value); }
     for (i = 0; i < p->command_count; ++i) wc(f, &p->commands[i]);
     for (i = 0; i < p->room_count; ++i) {
         const YaatRoom *r = &p->rooms[i];
@@ -144,8 +173,7 @@ int yaat_bytecode_read_file(const char *path, YaatScriptPackage *p)
     p->room_count = (int)rcount;
     p->command_count = (int)cc;
     for (i = 0; i < p->var_count; ++i) {
-        if (!rs(f, p->vars[i].name, 32) || !r16(f, &v)) { fclose(f); return 0; }
-        p->vars[i].bool_value = (int)v;
+        if (!rs(f, p->vars[i].name, 32) || !rv(f, &p->vars[i].value)) { fclose(f); return 0; }
     }
     for (i = 0; i < p->command_count; ++i) {
         if (!rc(f, &p->commands[i]) || !valid_command(&p->commands[i], p)) { fclose(f); return 0; }
