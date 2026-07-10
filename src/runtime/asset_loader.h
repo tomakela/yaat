@@ -161,6 +161,9 @@ void yaat_runtime_load_inventory_from_store(YaatAssetStore *store,
 int yaat_runtime_animation_frame_index(const int *timing_ms, int frame_count,
                                        unsigned long elapsed_ms);
 
+void yaat_runtime_load_room_from_store(YaatAssetStore *store,
+                                       const char *room_id,
+                                       YaatRuntimeLoadResult *result);
 void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
                                              YaatRuntimeLoadResult *result);
 void yaat_runtime_load_room_from_store(YaatAssetStore *store,

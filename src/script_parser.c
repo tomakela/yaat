@@ -117,6 +117,12 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_HIDE;
             parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "shake")) {
+            ScriptToken *duration = yaat_advance_token(cursor);
+            ScriptToken *magnitude = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_SHAKE;
+            cmd->bool_value = atoi(duration->lexeme);
+            cmd->int_value = atoi(magnitude->lexeme);
         } else {
             package->command_count--;
             if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
