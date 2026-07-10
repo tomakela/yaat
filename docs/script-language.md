@@ -75,7 +75,7 @@ Line comments start with `#` and continue to the end of the line:
 
 ## Top-level declarations
 
-A script file contains optional global variables followed by top-level `room`, `object`, and `hotspot` declarations.
+A script file contains optional global variables followed by top-level `room` declarations. The current parser skips top-level `object` and `hotspot` blocks rather than preserving them in the script package.
 
 ```text
 var door_locked = true
@@ -136,7 +136,7 @@ Rooms may contain room fields, event handlers, and nested object or hotspot decl
 
 ### Objects
 
-Objects define interactive things. They can be declared at the top level or nested inside a room.
+Objects define interactive things. In the current parser, only objects nested inside a `room` are preserved in the script package; top-level `object` blocks are skipped.
 
 ```text
 object <id> {
@@ -144,7 +144,7 @@ object <id> {
 }
 ```
 
-A top-level object can represent an inventory item or a reusable object definition. A nested object starts in the room where it is declared.
+A nested object starts in the room where it is declared. Current parser support for object data is limited to the object id, `name`, `at`, `size`, and `on ... { ... }` event blocks; other fields are skipped.
 
 ### Hotspots
 
@@ -156,13 +156,13 @@ hotspot <id> {
 }
 ```
 
-Hotspots can be declared at the top level or nested inside a room. Nested hotspots are the usual form for exits, doors, signs, scenery, and other room-specific regions.
+Only hotspots nested inside a `room` are preserved by the current parser. Top-level `hotspot` blocks are skipped. Nested hotspots are the usual form for exits, doors, signs, scenery, and other room-specific regions. Current parser support for hotspot data is limited to the hotspot id, `name`, `at`, `size`, and `on ... { ... }` event blocks; other fields are skipped.
 
 ## Room fields
 
 ### Background
 
-Each room can define a background image path:
+The language reserves this syntax for a room background image path, but the current parser does not preserve `background` in `YaatScriptPackage` or `YaatRoom`:
 
 ```text
 background "path"
@@ -186,7 +186,7 @@ on enter {
 
 ### Nested objects and hotspots
 
-Rooms can declare local objects and hotspots:
+Rooms can declare local objects and hotspots. The current parser preserves only nested room entities, their `name`, `at`, and `size` fields, and their event blocks; fields such as `sprite` are skipped:
 
 ```text
 room hall {
@@ -209,7 +209,7 @@ room hall {
 
 ## Object and hotspot fields
 
-Objects and hotspots share the same small field set.
+Objects and hotspots share the same small parser-supported field set: `name`, `at`, `size`, and event blocks. Other fields may be present in scripts but are skipped by the current parser.
 
 ### Display name
 
@@ -235,7 +235,7 @@ Example:
 sprite "assets/items/brass_key.png"
 ```
 
-A hotspot may omit `sprite` if it is only an invisible clickable region.
+The current parser skips `sprite` and does not store it in `YaatEntity`; runtime sprite changes are currently represented only by commands such as `set_sprite`. A hotspot may omit `sprite` if it is only an invisible clickable region.
 
 ### Position
 
