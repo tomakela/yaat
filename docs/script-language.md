@@ -407,18 +407,32 @@ Example:
 drop brass_key brass_key
 ```
 
-### give
+### remove_inventory
 
-Add an item to inventory without implying that it was picked up from the current room.
+Remove an item from inventory if the player has it. The runtime also clears the selected inventory item when it removes the selected item. Missing items are ignored.
 
 ```text
-give <item>
+remove_inventory <item>
 ```
 
 Example:
 
 ```text
-give map
+remove_inventory brass_key
+```
+
+### consume
+
+Remove an item from inventory after it is used. `consume` has the same runtime behavior as `remove_inventory`; use this name when the script is spending or destroying the item as part of an interaction.
+
+```text
+consume <item>
+```
+
+Example:
+
+```text
+consume apple
 ```
 
 ### hide
@@ -467,6 +481,34 @@ set visits = 1
 
 Version 0 does not include arithmetic, so `set visits = visits + 1` is intentionally invalid.
 
+### move
+
+Move an object or hotspot in the current room to an absolute room position. Coordinates are integer pixels in the room coordinate system.
+
+```text
+move <object_id> <x>, <y>
+```
+
+Example:
+
+```text
+move crate 160, 96
+```
+
+### set_sprite
+
+Change an object's sprite path at runtime. The path must be a quoted string and is loaded as the object's new sprite.
+
+```text
+set_sprite <object_id> "path"
+```
+
+Example:
+
+```text
+set_sprite door "assets/rooms/hall/door_open.png"
+```
+
 ### play_sound
 
 Play a sound effect.
@@ -495,6 +537,20 @@ Example:
 
 ```text
 shake 350 6
+```
+
+### call
+
+Run a global event or procedure by id. `call` looks up an `event` declared at the top level of the script package and executes its commands immediately. Calls are limited by the runtime's script call-depth guard to prevent runaway recursion.
+
+```text
+call <event_or_proc_id>
+```
+
+Example:
+
+```text
+call unlock_door
 ```
 
 ## Control flow
