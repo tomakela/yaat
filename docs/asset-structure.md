@@ -303,6 +303,30 @@ Development builds should load loose files first because they are easier to insp
 - Keep individual files small enough for old machines; split oversized speech or animation assets.
 - Validate the final asset tree on a clean Windows 95-compatible runtime target or emulator before release.
 
+## Release asset archives
+
+The loose `game/` directory is the canonical source for YAAT assets. Developers
+should edit and review files in that tree, then generate release artifacts from
+it as a separate packaging step.
+
+Use the development-time packer in `tools/asset_pack/` to create ZIP-format
+`.dat` archives while preserving logical paths relative to the packed folder:
+
+```sh
+cc -std=c99 -Wall -Wextra -pedantic -o tools/asset_pack/asset_pack tools/asset_pack/asset_pack.c
+./tools/asset_pack/asset_pack game game.dat
+```
+
+Patch folders can be packed the same way:
+
+```sh
+./tools/asset_pack/asset_pack patch_folder patch0000.dat
+```
+
+Generated `game.dat` and `patchNNNN.dat` files are release artifacts, not the
+canonical asset source. The packer writes a manifest report next to each archive
+as `<output>.manifest.txt`, listing the normalized logical paths, byte sizes,
+and CRC-32 values of packed files.
 ## Initial packed `.dat` format
 
 YAAT's first packed runtime asset format is a ZIP archive renamed with a `.dat`
