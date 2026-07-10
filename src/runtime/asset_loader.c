@@ -10,6 +10,7 @@
 typedef struct YaatGameConfig {
     char first_room[YAAT_ASSET_MAX_NAME];
     char rooms_path[YAAT_ASSET_MAX_PATH];
+    YaatRuntimePlayer player;
 } YaatGameConfig;
 
 static void yaat_join_path(char *dst, int dst_size, const char *left,
@@ -276,6 +277,14 @@ static void yaat_format_asset_error_path(char *dst, int dst_size,
         strncat(dst, ")", dst_size - 1 - strlen(dst));
     }
 }
+
+static YaatAnimationClip *yaat_find_or_add_animation(YaatRuntimePlayer *player,
+                                                     const char *id);
+static void yaat_parse_animation_frames(YaatAnimationClip *clip, char *value);
+static void yaat_parse_animation_frame_value(YaatAnimationClip *clip, int index,
+                                             const char *value);
+static void yaat_default_player_animations(YaatRuntimePlayer *player);
+
 static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatGameConfig *config,
                                   YaatRuntimeLoadResult *result)
 {
@@ -284,9 +293,13 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatG
     char line[YAAT_LINE_MAX];
     char section[YAAT_ASSET_MAX_NAME];
     char error_path[YAAT_ASSET_MAX_PATH + YAAT_ASSET_MAX_PATH];
+    char frames[YAAT_LINE_MAX];
+    YaatAnimationClip *clip;
 
+    memset(config, 0, sizeof(*config));
     yaat_copy_string(config->rooms_path, sizeof(config->rooms_path), "rooms");
     config->first_room[0] = '\0';
+    memset(&config->player, 0, sizeof(config->player));
     section[0] = '\0';
 
     if (!yaat_asset_store_load(store, path, &buffer)) {
@@ -320,17 +333,48 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatG
             continue;
         }
         *equals = '\0';
-        if (strcmp(section, "game") == 0 &&
-            strcmp(yaat_trim(text), "first_room") == 0) {
+        text = yaat_trim(text);
+        ++equals;
+        if (strcmp(section, "game") == 0 && strcmp(text, "first_room") == 0) {
             yaat_copy_string(config->first_room, sizeof(config->first_room),
-                             yaat_trim(equals + 1));
-        } else if (strcmp(section, "paths") == 0 &&
-                   strcmp(yaat_trim(text), "rooms") == 0) {
+                             yaat_trim(equals));
+        } else if (strcmp(section, "paths") == 0 && strcmp(text, "rooms") == 0) {
             yaat_copy_string(config->rooms_path, sizeof(config->rooms_path),
+                             yaat_trim(equals));
+        } else if (strncmp(section, "player.animation.", 17) == 0) {
+            clip = yaat_find_or_add_animation(&config->player, section + 17);
+            if (clip != 0) {
+                if (strcmp(text, "frame_ms") == 0) {
+                    clip->default_frame_ms = atoi(yaat_trim(equals));
+                } else if (strcmp(text, "loop") == 0) {
+                    clip->loop = yaat_bool_value(yaat_trim(equals), 1);
+                } else if (strcmp(text, "frames") == 0) {
+                    yaat_copy_string(frames, sizeof(frames), yaat_trim(equals));
+                    yaat_parse_animation_frames(clip, frames);
+                } else if (strncmp(text, "frame", 5) == 0) {
+                    yaat_parse_animation_frame_value(clip, atoi(text + 5),
+                                                     yaat_trim(equals));
+                }
+            }
+                             yaat_trim(equals + 1));
+        } else if (strcmp(section, "player") == 0 &&
+                   strcmp(yaat_trim(text), "idle") == 0) {
+            yaat_copy_string(config->player.idle, sizeof(config->player.idle),
+                             yaat_trim(equals + 1));
+        } else if (strcmp(section, "player") == 0 &&
+                   strcmp(yaat_trim(text), "walk_left") == 0) {
+            yaat_copy_string(config->player.walk_left, sizeof(config->player.walk_left),
+                             yaat_trim(equals + 1));
+        } else if (strcmp(section, "player") == 0 &&
+                   strcmp(yaat_trim(text), "walk_right") == 0) {
+            yaat_copy_string(config->player.walk_right, sizeof(config->player.walk_right),
                              yaat_trim(equals + 1));
         }
     }
     yaat_asset_buffer_free(&buffer);
+    if (config->player.animation_count == 0) {
+        yaat_default_player_animations(&config->player);
+    }
 
     if (config->first_room[0] == '\0') {
         yaat_format_asset_error_path(error_path, sizeof(error_path), path,
@@ -395,6 +439,8 @@ static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRunt
             room->height = atoi(yaat_trim(equals));
         } else if (strcmp(section, "display") == 0 && strcmp(text, "background") == 0) {
             yaat_copy_string(room->background, sizeof(room->background), yaat_trim(equals));
+        } else if (strcmp(section, "display") == 0 && strcmp(text, "walkmask") == 0) {
+            yaat_copy_string(room->walkmask, sizeof(room->walkmask), yaat_trim(equals));
         }
     }
     yaat_asset_buffer_free(&buffer);
@@ -432,6 +478,156 @@ static void yaat_parse_rect(const char *value, int *x, int *y, int *width,
     }
 }
 
+
+static unsigned long yaat_parse_color_value(const char *value, unsigned long default_value)
+{
+    const char *text;
+    unsigned long color;
+
+    if (value == 0) return default_value;
+    text = value;
+    while (*text == ' ' || *text == '\t') ++text;
+    if (text[0] == '#' && sscanf(text + 1, "%lx", &color) == 1) return color & 0x00ffffffUL;
+    if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X') && sscanf(text + 2, "%lx", &color) == 1) return color & 0x00ffffffUL;
+    if (sscanf(text, "%lx", &color) == 1) return color & 0x00ffffffUL;
+    return default_value;
+}
+
+static void yaat_parse_transparency_mode(YaatTransparency *transparency, const char *value)
+{
+    const char *mode;
+
+    if (transparency == 0) return;
+    mode = value != 0 ? value : "";
+    if (strcmp(mode, "none") == 0) transparency->mode = YAAT_TRANSPARENCY_NONE;
+    else if (strcmp(mode, "color-key") == 0 || strcmp(mode, "color_key") == 0) transparency->mode = YAAT_TRANSPARENCY_COLOR_KEY;
+    else if (strcmp(mode, "alpha") == 0) transparency->mode = YAAT_TRANSPARENCY_ALPHA;
+    else if (strcmp(mode, "mask") == 0) transparency->mode = YAAT_TRANSPARENCY_MASK;
+static int yaat_parse_color_value(const char *value, unsigned long *color)
+{
+    unsigned int r;
+    unsigned int g;
+    unsigned int b;
+    char *end;
+    unsigned long parsed;
+
+    if (value == 0 || color == 0) {
+        return 0;
+    }
+    value = yaat_trim((char *)value);
+    if (value[0] == '#') {
+        if (sscanf(value + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+            *color = (b & 0xff) | ((g & 0xff) << 8) | ((r & 0xff) << 16);
+            return 1;
+        }
+        return 0;
+    }
+    if (sscanf(value, "%u,%u,%u", &r, &g, &b) == 3) {
+        *color = (b & 0xff) | ((g & 0xff) << 8) | ((r & 0xff) << 16);
+        return 1;
+    }
+    parsed = strtoul(value, &end, 0);
+    if (end != value && yaat_trim(end)[0] == '\0') {
+        *color = parsed & 0x00ffffffUL;
+        return 1;
+    }
+    return 0;
+static YaatAnimationClip *yaat_find_or_add_animation(YaatRuntimePlayer *player,
+                                                     const char *id)
+{
+    int i;
+
+    if (player == 0 || id == 0 || id[0] == '\0') {
+        return 0;
+    }
+    for (i = 0; i < player->animation_count; ++i) {
+        if (strcmp(player->animations[i].id, id) == 0) {
+            return &player->animations[i];
+        }
+    }
+    if (player->animation_count >= YAAT_ASSET_MAX_ANIMATIONS) {
+        return 0;
+    }
+    i = player->animation_count++;
+    memset(&player->animations[i], 0, sizeof(player->animations[i]));
+    yaat_copy_string(player->animations[i].id,
+                     sizeof(player->animations[i].id), id);
+    player->animations[i].loop = 1;
+    player->animations[i].default_frame_ms = 150;
+    return &player->animations[i];
+}
+
+static void yaat_add_animation_frame(YaatAnimationClip *clip, const char *path)
+{
+    YaatAnimationFrame *frame;
+
+    if (clip == 0 || path == 0 || path[0] == '\0' ||
+        clip->frame_count >= YAAT_ASSET_MAX_ANIMATION_FRAMES) {
+        return;
+    }
+    frame = &clip->frames[clip->frame_count++];
+    memset(frame, 0, sizeof(*frame));
+    frame->duration_ms = clip->default_frame_ms > 0 ?
+                         clip->default_frame_ms : 150;
+    yaat_copy_string(frame->path, sizeof(frame->path), path);
+}
+
+static void yaat_parse_animation_frames(YaatAnimationClip *clip, char *value)
+{
+    char *token;
+
+    token = strtok(value, ";,");
+    while (token != 0) {
+        yaat_add_animation_frame(clip, yaat_trim(token));
+        token = strtok(0, ";,");
+    }
+}
+
+static void yaat_parse_animation_frame_value(YaatAnimationClip *clip, int index,
+                                             const char *value)
+{
+    char copy[YAAT_LINE_MAX];
+    char *token;
+    char *field;
+    int part;
+    YaatAnimationFrame *frame;
+
+    if (clip == 0 || index < 0 || index >= YAAT_ASSET_MAX_ANIMATION_FRAMES ||
+        value == 0) {
+        return;
+    }
+    while (clip->frame_count <= index) {
+        yaat_add_animation_frame(clip, " ");
+    }
+    frame = &clip->frames[index];
+    yaat_copy_string(copy, sizeof(copy), value);
+    token = strtok(copy, "|");
+    part = 0;
+    while (token != 0) {
+        field = yaat_trim(token);
+        if (part == 0) {
+            yaat_copy_string(frame->path, sizeof(frame->path), field);
+        } else if (part == 1) {
+            yaat_parse_rect(field, &frame->x, &frame->y,
+                            &frame->width, &frame->height);
+        } else if (part == 2) {
+            frame->duration_ms = atoi(field);
+        }
+        ++part;
+        token = strtok(0, "|");
+    }
+}
+
+static void yaat_default_player_animations(YaatRuntimePlayer *player)
+{
+    yaat_add_animation_frame(yaat_find_or_add_animation(player, "idle"),
+                             "graphics/sprites/player_idle.bmp");
+    yaat_add_animation_frame(yaat_find_or_add_animation(player, "walk_left"),
+                             "graphics/sprites/player_walk_left.bmp");
+    yaat_add_animation_frame(yaat_find_or_add_animation(player, "walk_right"),
+                             "graphics/sprites/player_walk_right.bmp");
+}
+
 static void yaat_load_room_objects(YaatAssetStore *store, const char *path, YaatRuntimeRoom *room)
 {
     YaatAssetBuffer buffer;
@@ -462,6 +658,8 @@ static void yaat_load_room_objects(YaatAssetStore *store, const char *path, Yaat
                 object = &room->objects[room->object_count++];
                 memset(object, 0, sizeof(*object));
                 object->visible = 1;
+                object->transparency.mode = YAAT_TRANSPARENCY_ALPHA;
+                object->transparency.color_key = 0x00ff00ffUL;
                 yaat_copy_string(object->id, sizeof(object->id), text + 1);
             }
             continue;
@@ -490,6 +688,18 @@ static void yaat_load_room_objects(YaatAssetStore *store, const char *path, Yaat
             object->height = atoi(yaat_trim(equals));
         } else if (strcmp(text, "visible") == 0) {
             object->visible = yaat_bool_value(yaat_trim(equals), 1);
+        } else if (strcmp(text, "transparency") == 0) {
+            yaat_parse_transparency_mode(&object->transparency, yaat_trim(equals));
+        } else if (strcmp(text, "transparent_color") == 0 || strcmp(text, "color_key") == 0) {
+            object->transparency.mode = YAAT_TRANSPARENCY_COLOR_KEY;
+            object->transparency.color_key = yaat_parse_color_value(yaat_trim(equals), object->transparency.color_key);
+        } else if (strcmp(text, "mask") == 0 || strcmp(text, "mask_bitmap") == 0) {
+            object->transparency.mode = YAAT_TRANSPARENCY_MASK;
+            yaat_copy_string(object->transparency.mask, sizeof(object->transparency.mask), yaat_trim(equals));
+        } else if (strcmp(text, "transparent_color") == 0 ||
+                   strcmp(text, "color_key") == 0) {
+            object->transparent_color_enabled =
+                yaat_parse_color_value(yaat_trim(equals), &object->transparent_color);
         }
     }
     yaat_asset_buffer_free(&buffer);
@@ -526,6 +736,7 @@ static void yaat_load_room_hotspots(YaatAssetStore *store, const char *path, Yaa
                 hotspot = &room->hotspots[room->hotspot_count++];
                 memset(hotspot, 0, sizeof(*hotspot));
                 yaat_copy_string(hotspot->id, sizeof(hotspot->id), text + 1);
+                yaat_copy_string(hotspot->cursor, sizeof(hotspot->cursor), "arrow");
             }
             continue;
         }
@@ -549,32 +760,33 @@ static void yaat_load_room_hotspots(YaatAssetStore *store, const char *path, Yaa
         } else if (strcmp(text, "script_event") == 0) {
             yaat_copy_string(hotspot->script_event, sizeof(hotspot->script_event),
                              yaat_trim(equals));
+        } else if (strcmp(text, "action") == 0) {
+            yaat_copy_string(hotspot->action, sizeof(hotspot->action), yaat_trim(equals));
+        } else if (strcmp(text, "target_room") == 0) {
+            yaat_copy_string(hotspot->target_room, sizeof(hotspot->target_room), yaat_trim(equals));
+        } else if (strcmp(text, "target_x") == 0) {
+            hotspot->target_x = atoi(yaat_trim(equals));
+            hotspot->has_target_x = 1;
+        } else if (strcmp(text, "target_y") == 0) {
+            hotspot->target_y = atoi(yaat_trim(equals));
+            hotspot->has_target_y = 1;
         }
     }
     yaat_asset_buffer_free(&buffer);
 }
 
-void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
-                                             YaatRuntimeLoadResult *result)
+static void yaat_runtime_load_room_assets(YaatAssetStore *store, const char *rooms_path,
+                                        const char *room_id,
+                                        YaatRuntimeLoadResult *result)
 {
-    YaatGameConfig config;
     char room_dir[YAAT_ASSET_MAX_PATH];
     char room_ini[YAAT_ASSET_MAX_PATH];
     char objects_ini[YAAT_ASSET_MAX_PATH];
     char hotspots_ini[YAAT_ASSET_MAX_PATH];
 
-    if (result == 0) {
-        return;
-    }
     memset(result, 0, sizeof(*result));
     result->ok = 1;
-
-    yaat_load_game_config(store, "game.ini", &config, result);
-    if (!result->ok) {
-        return;
-    }
-
-    yaat_join_path(room_dir, sizeof(room_dir), config.rooms_path, config.first_room);
+    yaat_join_path(room_dir, sizeof(room_dir), rooms_path, room_id);
     yaat_join_path(room_ini, sizeof(room_ini), room_dir, "room.ini");
     yaat_join_path(objects_ini, sizeof(objects_ini), room_dir, "objects.ini");
     yaat_join_path(hotspots_ini, sizeof(hotspots_ini), room_dir, "hotspots.ini");
@@ -586,6 +798,44 @@ void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
     }
     yaat_load_room_objects(store, objects_ini, &result->room);
     yaat_load_room_hotspots(store, hotspots_ini, &result->room);
+}
+
+void yaat_runtime_load_room_from_store(YaatAssetStore *store,
+                                       const char *room_id,
+                                       YaatRuntimeLoadResult *result)
+{
+    YaatGameConfig config;
+
+    if (result == 0) {
+        return;
+    }
+    memset(result, 0, sizeof(*result));
+    result->ok = 1;
+    yaat_load_game_config(store, "game.ini", &config, result);
+    if (!result->ok) {
+        return;
+    }
+    yaat_runtime_load_room_assets(store, config.rooms_path, room_id, result);
+}
+    result->player = config.player;
+
+    result->player = config.player;
+
+void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
+                                             YaatRuntimeLoadResult *result)
+{
+    YaatGameConfig config;
+
+    if (result == 0) {
+        return;
+    }
+    memset(result, 0, sizeof(*result));
+    result->ok = 1;
+    yaat_load_game_config(store, "game.ini", &config, result);
+    if (!result->ok) {
+        return;
+    }
+    yaat_runtime_load_room_assets(store, config.rooms_path, config.first_room, result);
 }
 
 void yaat_runtime_load_start_room(const char *game_ini_path,
