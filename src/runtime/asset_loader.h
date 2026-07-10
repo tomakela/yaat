@@ -1,10 +1,24 @@
 #ifndef YAAT_RUNTIME_ASSET_LOADER_H
 #define YAAT_RUNTIME_ASSET_LOADER_H
 
+#include <stddef.h>
+
 #define YAAT_ASSET_MAX_PATH 128
 #define YAAT_ASSET_MAX_NAME 64
 #define YAAT_ASSET_MAX_OBJECTS 32
 #define YAAT_ASSET_MAX_HOTSPOTS 32
+
+typedef struct YaatAssetBuffer {
+    unsigned char *data;
+    unsigned long size;
+    char logical_path[YAAT_ASSET_MAX_PATH];
+    char source[YAAT_ASSET_MAX_PATH];
+} YaatAssetBuffer;
+
+typedef struct YaatAssetStore {
+    char loose_root[YAAT_ASSET_MAX_PATH];
+    char source[YAAT_ASSET_MAX_PATH];
+} YaatAssetStore;
 
 typedef struct YaatRuntimeObject {
     char id[YAAT_ASSET_MAX_NAME];
@@ -47,6 +61,21 @@ typedef struct YaatRuntimeLoadResult {
     YaatRuntimeRoom room;
 } YaatRuntimeLoadResult;
 
+typedef struct YaatAssetStore {
+    char root_path[YAAT_ASSET_MAX_PATH];
+} YaatAssetStore;
+
+void yaat_asset_store_init(YaatAssetStore *store, const char *root_path);
+int yaat_asset_read_all(YaatAssetStore *store, const char *logical_path,
+                        unsigned char **data, size_t *size);
+
+void yaat_asset_store_init_loose(YaatAssetStore *store, const char *loose_root);
+int yaat_asset_store_load(YaatAssetStore *store, const char *logical_path,
+                          YaatAssetBuffer *buffer);
+void yaat_asset_buffer_free(YaatAssetBuffer *buffer);
+
+void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
+                                             YaatRuntimeLoadResult *result);
 void yaat_runtime_load_start_room(const char *game_ini_path,
                                   YaatRuntimeLoadResult *result);
 
