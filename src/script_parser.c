@@ -214,14 +214,15 @@ int yaat_parse_script_file_into(YaatScriptPackage *package, const char *path)
     char *buffer;
     int ok = 0;
     if (!file) return 0;
-    fseek(file, 0, SEEK_END);
+    if (fseek(file, 0, SEEK_END) != 0) { fclose(file); return 0; }
     size = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    if (size < 0 || fseek(file, 0, SEEK_SET) != 0) { fclose(file); return 0; }
     buffer = (char *)malloc((size_t)size + 1);
     if (buffer) {
-        fread(buffer, 1, (size_t)size, file);
-        buffer[size] = '\0';
-        ok = yaat_parse_script_text_into(package, buffer);
+        if (fread(buffer, 1, (size_t)size, file) == (size_t)size) {
+            buffer[size] = '\0';
+            ok = yaat_parse_script_text_into(package, buffer);
+        }
         free(buffer);
     }
     fclose(file);

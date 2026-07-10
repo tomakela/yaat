@@ -111,6 +111,11 @@ static int read_loose(const char *path, YaatAssetReadResult *result)
         return 1;
     }
     result->size = (int)fread(result->data, 1, (size_t)size, fp);
+    if (result->size != size || ferror(fp)) {
+        fclose(fp);
+        set_error(result, "Could not read asset", path);
+        return 1;
+    }
     fclose(fp);
     result->data[result->size] = '\0';
     result->ok = 1;
@@ -144,6 +149,11 @@ static int read_archive(const char *archive_path, const char *logical,
         if (yaat_asset_normalize_path(entry_path, normalized, sizeof(normalized)) &&
             strcmp(normalized, logical) == 0) {
             result->size = (int)fread(result->data, 1, (size_t)size, fp);
+            if (result->size != size || ferror(fp)) {
+                set_error(result, "Could not read archived asset", archive_path);
+                fclose(fp);
+                return 1;
+            }
             result->data[result->size] = '\0';
             result->ok = 1;
             result->error[0] = '\0';
