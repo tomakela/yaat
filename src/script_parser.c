@@ -23,6 +23,34 @@ static int yaat_token_is(ScriptToken *token, const char *text)
     return token->length == strlen(text) && memcmp(token->lexeme, text, token->length) == 0;
 }
 
+static YaatValue yaat_parse_value_token(ScriptToken *token)
+{
+    char text[96];
+    parser_copy(text, sizeof(text), token->lexeme, token->length);
+    if (token->type == SCRIPT_TOKEN_KEYWORD_TRUE) return yaat_value_bool(1);
+    if (token->type == SCRIPT_TOKEN_KEYWORD_FALSE) return yaat_value_bool(0);
+    if (token->type == SCRIPT_TOKEN_INTEGER) return yaat_value_int(atoi(text));
+    return yaat_value_string(text);
+}
+
+static YaatConditionOp yaat_parse_condition_op(ScriptTokenType type)
+{
+    if (type == SCRIPT_TOKEN_EQUAL_EQUAL) return YAAT_COND_EQ;
+    if (type == SCRIPT_TOKEN_BANG_EQUAL) return YAAT_COND_NE;
+    if (type == SCRIPT_TOKEN_LESS) return YAAT_COND_LT;
+    if (type == SCRIPT_TOKEN_LESS_EQUAL) return YAAT_COND_LTE;
+    if (type == SCRIPT_TOKEN_GREATER) return YAAT_COND_GT;
+    if (type == SCRIPT_TOKEN_GREATER_EQUAL) return YAAT_COND_GTE;
+    return YAAT_COND_TRUTHY;
+}
+
+static int yaat_is_condition_op(ScriptTokenType type)
+{
+    return type == SCRIPT_TOKEN_EQUAL_EQUAL || type == SCRIPT_TOKEN_BANG_EQUAL ||
+           type == SCRIPT_TOKEN_LESS || type == SCRIPT_TOKEN_LESS_EQUAL ||
+           type == SCRIPT_TOKEN_GREATER || type == SCRIPT_TOKEN_GREATER_EQUAL;
+}
+
 static ScriptToken *yaat_peek(YaatScriptCursor *cursor)
 {
     return &cursor->tokens[cursor->index];
@@ -85,7 +113,17 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
         if (token->type == SCRIPT_TOKEN_KEYWORD_IF) {
             ScriptToken *cond = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_IF;
+            cmd->condition_op = YAAT_COND_TRUTHY;
             parser_copy(cmd->a, sizeof(cmd->a), cond->lexeme, cond->length);
+            if ((yaat_token_is(cond, "has") || yaat_token_is(cond, "inventory")) && yaat_peek(cursor)->type != SCRIPT_TOKEN_LEFT_BRACE) {
+                token = yaat_advance_token(cursor);
+                parser_copy(cmd->b, sizeof(cmd->b), token->lexeme, token->length);
+            if (yaat_is_condition_op(yaat_peek(cursor)->type)) {
+                ScriptToken *op = yaat_advance_token(cursor);
+                ScriptToken *rhs = yaat_advance_token(cursor);
+                cmd->condition_op = yaat_parse_condition_op(op->type);
+                cmd->value = yaat_parse_value_token(rhs);
+            }
             if (yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) { cmd->first_child = package->command_count; cmd->child_count = yaat_parse_commands(package, cursor); }
             if (yaat_match_token(cursor, SCRIPT_TOKEN_KEYWORD_ELSE) && yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) { cmd->first_else_child = package->command_count; cmd->else_child_count = yaat_parse_commands(package, cursor); }
         } else if (yaat_token_is(token, "say")) {
@@ -100,7 +138,9 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_SET;
             parser_copy(cmd->a, sizeof(cmd->a), name->lexeme, name->length);
-            cmd->bool_value = token->type == SCRIPT_TOKEN_KEYWORD_TRUE;
+            cmd->value = yaat_parse_value_token(token);
+            cmd->bool_value = cmd->value.bool_value;
+            cmd->int_value = cmd->value.int_value;
         } else if (yaat_token_is(token, "goto")) {
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_GOTO;
@@ -125,6 +165,18 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_DROP;
             parser_copy(cmd->a, sizeof(cmd->a), item_id->lexeme, item_id->length);
             parser_copy(cmd->b, sizeof(cmd->b), object_id->lexeme, object_id->length);
+        } else if (yaat_token_is(token, "drop")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_DROP;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "remove_inventory")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_REMOVE_INVENTORY;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "consume")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_CONSUME;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
         } else if (yaat_token_is(token, "hide")) {
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_HIDE;
@@ -210,7 +262,10 @@ int yaat_parse_script_text_into(YaatScriptPackage *package, const char *source)
             yaat_match_token(&cursor, SCRIPT_TOKEN_EQUAL);
             token = yaat_advance_token(&cursor);
             parser_copy(var_name, sizeof(var_name), name->lexeme, name->length);
-            yaat_script_package_set_var(package, var_name, token->type == SCRIPT_TOKEN_KEYWORD_TRUE);
+            {
+                YaatValue value = yaat_parse_value_token(token);
+                yaat_script_package_set_var_value(package, var_name, &value);
+            }
         } else if (token->type == SCRIPT_TOKEN_KEYWORD_ROOM) yaat_parse_room(package, &cursor);
         else if (yaat_peek(&cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(&cursor); yaat_skip_block(&cursor); }
     }
