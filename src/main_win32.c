@@ -22,6 +22,10 @@
 #define YAAT_PLAYER_SPEED_PIXELS 4
 #define YAAT_FRAME_TIMER_ID 1
 #define YAAT_FRAME_TIMER_MS 16
+#define YAAT_MAX_VERBS 8
+#define YAAT_VERB_BUTTON_WIDTH 50
+#define YAAT_VERB_BUTTON_HEIGHT 13
+#define YAAT_INVENTORY_SLOT_SIZE 20
 
 static YaatGdiRenderer g_renderer;
 static int g_renderer_ready;
@@ -49,11 +53,16 @@ static YaatAssetStore g_asset_store;
 static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
 static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
+static char g_verbs[YAAT_MAX_VERBS][32];
+static int g_verb_count;
+static char g_selected_verb[32] = "look";
+static char g_selected_inventory[32];
 static int g_fullscreen;
 static RECT g_windowed_rect;
 static DWORD g_windowed_style;
 
 typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
+typedef struct YaatViewport { int x; int y; int width; int height; } YaatViewport;
 static YaatBitmap g_background_bitmap;
 static YaatBitmap g_player_bitmap;
 
@@ -74,39 +83,6 @@ static void yaat_copy(char *dst, size_t dst_size, const char *src, size_t len)
     if (len >= dst_size) len = dst_size - 1;
     memcpy(dst, src, len);
     dst[len] = '\0';
-}
-
-static int yaat_token_is(ScriptToken *token, const char *text)
-{
-    return token->length == strlen(text) && memcmp(token->lexeme, text, token->length) == 0;
-}
-
-static ScriptToken *yaat_peek(YaatScriptCursor *cursor)
-{
-    return &cursor->tokens[cursor->index];
-}
-
-static ScriptToken *yaat_advance_token(YaatScriptCursor *cursor)
-{
-    if (cursor->index + 1 < cursor->count) cursor->index++;
-    return &cursor->tokens[cursor->index - 1];
-}
-
-static int yaat_match_token(YaatScriptCursor *cursor, ScriptTokenType type)
-{
-    if (yaat_peek(cursor)->type != type) return 0;
-    yaat_advance_token(cursor);
-    return 1;
-}
-
-static void yaat_skip_block(YaatScriptCursor *cursor)
-{
-    int depth = 1;
-    while (depth > 0 && yaat_peek(cursor)->type != SCRIPT_TOKEN_EOF) {
-        if (yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) depth++;
-        else if (yaat_match_token(cursor, SCRIPT_TOKEN_RIGHT_BRACE)) depth--;
-        else yaat_advance_token(cursor);
-    }
 }
 
 static void yaat_draw_rect(YaatGdiRenderer *renderer, int x, int y,
@@ -574,6 +550,80 @@ static char *yaat_trim_text(char *text)
     return text;
 }
 
+
+static void yaat_add_verb(const char *verb)
+{
+    if (verb == 0 || verb[0] == '\0' || g_verb_count >= YAAT_MAX_VERBS) return;
+    yaat_copy(g_verbs[g_verb_count], sizeof(g_verbs[g_verb_count]), verb, strlen(verb));
+    if (g_verb_count == 0) {
+        yaat_copy(g_selected_verb, sizeof(g_selected_verb), verb, strlen(verb));
+    }
+    ++g_verb_count;
+}
+
+static void yaat_load_default_verbs(void)
+{
+    g_verb_count = 0;
+    yaat_add_verb("look");
+    yaat_add_verb("use");
+    yaat_add_verb("talk");
+    yaat_add_verb("take");
+    yaat_add_verb("open");
+    yaat_add_verb("close");
+}
+
+static void yaat_load_verbs(void)
+{
+    unsigned char *buffer;
+    size_t buffer_size;
+    char *line;
+
+    yaat_load_default_verbs();
+    if (!yaat_asset_read_all(&g_asset_store, "actions.ini", &buffer, &buffer_size)) return;
+
+    g_verb_count = 0;
+    for (line = strtok((char *)buffer, "\n"); line != 0;
+         line = strtok(0, "\n")) {
+        char *text = yaat_trim_text(line);
+        char *equals;
+        char *verb;
+        if (text[0] == '\0' || text[0] == ';' || text[0] == '#' || text[0] == '[') continue;
+        equals = strchr(text, '=');
+        if (equals == 0) continue;
+        *equals = '\0';
+        verb = yaat_trim_text(equals + 1);
+        if (strncmp(yaat_trim_text(text), "verb", 4) == 0) yaat_add_verb(verb);
+    }
+    if (g_verb_count == 0) yaat_load_default_verbs();
+    free(buffer);
+}
+
+static int yaat_verb_button_at(int x, int y)
+{
+    int i;
+    if (y < YAAT_PLAYFIELD_HEIGHT) return -1;
+    for (i = 0; i < g_verb_count; ++i) {
+        int bx = 4 + (i % 3) * YAAT_VERB_BUTTON_WIDTH;
+        int by = YAAT_PLAYFIELD_HEIGHT + 3 + (i / 3) * (YAAT_VERB_BUTTON_HEIGHT + 2);
+        if (x >= bx && y >= by && x < bx + YAAT_VERB_BUTTON_WIDTH &&
+            y < by + YAAT_VERB_BUTTON_HEIGHT) return i;
+    }
+    return -1;
+}
+
+static int yaat_inventory_slot_at(int x, int y)
+{
+    int i;
+    int start_x = 164;
+    int start_y = YAAT_PLAYFIELD_HEIGHT + 4;
+    if (y < start_y || y >= start_y + YAAT_INVENTORY_SLOT_SIZE) return -1;
+    for (i = 0; i < g_inventory_count; ++i) {
+        int sx = start_x + (i * (YAAT_INVENTORY_SLOT_SIZE + 3));
+        if (x >= sx && x < sx + YAAT_INVENTORY_SLOT_SIZE) return i;
+    }
+    return -1;
+}
+
 static void yaat_load_runtime_hotspots(void)
 {
     char path[YAAT_ASSET_MAX_PATH];
@@ -711,6 +761,16 @@ static YaatEntity *yaat_entity_by_id(YaatRoom *room, const char *id)
     return 0;
 }
 
+static YaatEntity *yaat_entity_by_id_any_room(const char *id)
+{
+    int i;
+    for (i = 0; i < g_room_count; ++i) {
+        YaatEntity *entity = yaat_entity_by_id(&g_rooms[i], id);
+        if (entity != 0) return entity;
+    }
+    return 0;
+}
+
 static YaatEvent *yaat_find_event(YaatEvent *events, int count, const char *name, const char *item)
 {
     int i;
@@ -798,86 +858,19 @@ static void yaat_load_script_package(const char *bytecode_path, const char *sour
 {
     YaatScriptPackage package;
     yaat_script_package_init(&package);
-    if (yaat_bytecode_read_file(bytecode_path, &package) || yaat_parse_script_file_into(&package, source_path)) {
+    if (yaat_bytecode_read_file(bytecode_path, &package) ||
+        yaat_parse_script_file_into(&package, source_path)) {
         yaat_import_package(&package);
     }
-    YaatEntity *entity;
-    ScriptToken *token;
-    if (room->entity_count >= YAAT_MAX_ENTITIES) return;
-    entity = &room->entities[room->entity_count++];
-    memset(entity, 0, sizeof(*entity));
-    entity->kind = kind;
-    entity->visible = 1;
-    token = yaat_advance_token(cursor);
-    yaat_copy(entity->id, sizeof(entity->id), token->lexeme, token->length);
-    yaat_copy(entity->name, sizeof(entity->name), entity->id, strlen(entity->id));
-    if (!yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) return;
-    while (yaat_peek(cursor)->type != SCRIPT_TOKEN_RIGHT_BRACE && yaat_peek(cursor)->type != SCRIPT_TOKEN_EOF) {
-        token = yaat_advance_token(cursor);
-        if (token->type == SCRIPT_TOKEN_KEYWORD_ON) yaat_parse_event(cursor, entity->events, &entity->event_count);
-        else if (yaat_token_is(token, "name")) { token = yaat_advance_token(cursor); yaat_copy(entity->name, sizeof(entity->name), token->lexeme, token->length); }
-        else if (yaat_token_is(token, "at")) { entity->x = atoi(yaat_advance_token(cursor)->lexeme); yaat_match_token(cursor, SCRIPT_TOKEN_COMMA); entity->y = atoi(yaat_advance_token(cursor)->lexeme); }
-        else if (yaat_token_is(token, "size")) { entity->w = atoi(yaat_advance_token(cursor)->lexeme); yaat_match_token(cursor, SCRIPT_TOKEN_COMMA); entity->h = atoi(yaat_advance_token(cursor)->lexeme); }
-        else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
-        else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_STRING || yaat_peek(cursor)->type == SCRIPT_TOKEN_IDENTIFIER || yaat_peek(cursor)->type == SCRIPT_TOKEN_INTEGER) yaat_advance_token(cursor);
-    }
-    yaat_match_token(cursor, SCRIPT_TOKEN_RIGHT_BRACE);
-}
-
-static void yaat_parse_room(YaatScriptCursor *cursor)
-{
-    YaatRoom *room;
-    ScriptToken *token;
-    if (g_room_count >= YAAT_MAX_ROOMS) return;
-    room = &g_rooms[g_room_count++];
-    memset(room, 0, sizeof(*room));
-    room->color = 0x00d8c7a3UL + (unsigned long)(g_room_count * 0x00101010UL);
-    token = yaat_advance_token(cursor);
-    yaat_copy(room->id, sizeof(room->id), token->lexeme, token->length);
-    yaat_copy(room->label, sizeof(room->label), room->id, strlen(room->id));
-    if (!yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) return;
-    while (yaat_peek(cursor)->type != SCRIPT_TOKEN_RIGHT_BRACE && yaat_peek(cursor)->type != SCRIPT_TOKEN_EOF) {
-        token = yaat_advance_token(cursor);
-        if (token->type == SCRIPT_TOKEN_KEYWORD_ON) yaat_parse_event(cursor, room->events, &room->event_count);
-        else if (token->type == SCRIPT_TOKEN_KEYWORD_OBJECT) yaat_parse_entity(cursor, room, YAAT_ENTITY_OBJECT);
-        else if (token->type == SCRIPT_TOKEN_KEYWORD_HOTSPOT) yaat_parse_entity(cursor, room, YAAT_ENTITY_HOTSPOT);
-        else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
-        else if (yaat_peek(cursor)->type != SCRIPT_TOKEN_RIGHT_BRACE) yaat_advance_token(cursor);
-    }
-    yaat_match_token(cursor, SCRIPT_TOKEN_RIGHT_BRACE);
-}
-
-static void yaat_parse_script_text(const char *source)
-{
-    ScriptTokenizerResult result = script_tokenize(source);
-    YaatScriptCursor cursor;
-    cursor.tokens = result.tokens.items;
-    cursor.count = result.tokens.count;
-    cursor.index = 0;
-    while (yaat_peek(&cursor)->type != SCRIPT_TOKEN_EOF) {
-        ScriptToken *token = yaat_advance_token(&cursor);
-        if (token->type == SCRIPT_TOKEN_KEYWORD_VAR) {
-            ScriptToken *name = yaat_advance_token(&cursor);
-            char var_name[32];
-            yaat_match_token(&cursor, SCRIPT_TOKEN_EQUAL);
-            token = yaat_advance_token(&cursor);
-            yaat_copy(var_name, sizeof(var_name), name->lexeme, name->length);
-            yaat_set_var(var_name, token->type == SCRIPT_TOKEN_KEYWORD_TRUE);
-        } else if (token->type == SCRIPT_TOKEN_KEYWORD_ROOM) yaat_parse_room(&cursor);
-        else if (yaat_peek(&cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(&cursor); yaat_skip_block(&cursor); }
-    }
-    script_tokenizer_result_free(&result);
 }
 
 static void yaat_load_script_file(const char *path)
 {
-    unsigned char *buffer;
-    size_t size;
-
-    if (!yaat_asset_read_all(&g_asset_store, path, &buffer, &size)) return;
-    buffer[size] = '\0';
-    yaat_parse_script_text((const char *)buffer);
-    free(buffer);
+    YaatScriptPackage package;
+    yaat_script_package_init(&package);
+    if (yaat_parse_script_file_into(&package, path)) {
+        yaat_import_package(&package);
+    }
 }
 
 static void yaat_load_demo(void)
@@ -891,6 +884,27 @@ static void yaat_load_demo(void)
     yaat_load_script_file("rooms/room001_intro/script.yaat");
     yaat_load_script_file("rooms/room002_exit/script.yaat");
     yaat_enter_room(0);
+}
+
+static void yaat_draw_verb_ui(void)
+{
+    int i;
+    yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
+    for (i = 0; i < g_verb_count; ++i) {
+        int bx = 4 + (i % 3) * YAAT_VERB_BUTTON_WIDTH;
+        int by = YAAT_PLAYFIELD_HEIGHT + 3 + (i / 3) * (YAAT_VERB_BUTTON_HEIGHT + 2);
+        unsigned long fill = strcmp(g_verbs[i], g_selected_verb) == 0 ? 0x00406090UL : 0x00282838UL;
+        yaat_draw_rect(&g_renderer, bx, by, YAAT_VERB_BUTTON_WIDTH - 3, YAAT_VERB_BUTTON_HEIGHT, 0x00000000UL);
+        yaat_draw_rect(&g_renderer, bx + 1, by + 1, YAAT_VERB_BUTTON_WIDTH - 5, YAAT_VERB_BUTTON_HEIGHT - 2, fill);
+        yaat_draw_text_block(bx + 4, by + 3, g_verbs[i], 0x00f0f0f0UL);
+    }
+    for (i = 0; i < g_inventory_count; ++i) {
+        int sx = 164 + (i * (YAAT_INVENTORY_SLOT_SIZE + 3));
+        unsigned long fill = strcmp(g_inventory[i], g_selected_inventory) == 0 ? 0x00605020UL : 0x00303030UL;
+        yaat_draw_rect(&g_renderer, sx, YAAT_PLAYFIELD_HEIGHT + 4, YAAT_INVENTORY_SLOT_SIZE, YAAT_INVENTORY_SLOT_SIZE, 0x00000000UL);
+        yaat_draw_rect(&g_renderer, sx + 1, YAAT_PLAYFIELD_HEIGHT + 5, YAAT_INVENTORY_SLOT_SIZE - 2, YAAT_INVENTORY_SLOT_SIZE - 2, fill);
+        yaat_draw_text_block(sx + 5, YAAT_PLAYFIELD_HEIGHT + 10, g_inventory[i], 0x00ffd060UL);
+    }
 }
 
 static void yaat_draw_script_scene(void)
@@ -908,14 +922,8 @@ static void yaat_draw_script_scene(void)
     yaat_draw_rect(&g_renderer, g_target_x - 5, g_target_y - 1, 11, 3, 0x000f3c70UL);
     yaat_draw_rect(&g_renderer, g_target_x - 1, g_target_y - 5, 3, 11, 0x000f3c70UL);
     yaat_draw_player();
-    yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
-    if (g_dialogue_visible) {
-        yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_speaker, 0x00ffd060UL);
-        yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_text, 0x00f0f0f0UL);
-    } else {
-        yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 12, "Click hotspots to play the demo", 0x00808080UL);
-    }
 }
+
 
 static void yaat_render_scene(void)
 {
@@ -925,6 +933,11 @@ static void yaat_render_scene(void)
         yaat_draw_script_scene();
     } else {
         yaat_draw_error_scene();
+    }
+    yaat_draw_verb_ui();
+    if (g_dialogue_visible) {
+        yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_speaker, 0x00ffd060UL);
+        yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_text, 0x00f0f0f0UL);
     }
     yaat_draw_cursor_placeholder();
 }
@@ -982,15 +995,6 @@ static void yaat_runtime_join_path(char *dst, size_t dst_size, const char *left,
     }
 }
 
-static void yaat_runtime_event_name(char *dst, size_t dst_size, const char *script_event)
-{
-    const char *name = script_event;
-    if (script_event != 0 && strncmp(script_event, "on_", 3) == 0) {
-        name = script_event + 3;
-    }
-    yaat_copy(dst, dst_size, name != 0 ? name : "click", strlen(name != 0 ? name : "click"));
-}
-
 static int yaat_runtime_room_script_index(void)
 {
     int idx;
@@ -1012,12 +1016,16 @@ static void yaat_runtime_execute_entity_event(const char *entity_id, const char 
     entity = yaat_entity_by_id(room, entity_id);
     if (entity == 0) return;
 
-    yaat_runtime_event_name(event_name, sizeof(event_name), script_event);
-    event = yaat_find_event(entity->events, entity->event_count, event_name, 0);
+    (void)script_event;
+    yaat_copy(event_name, sizeof(event_name), g_selected_verb, strlen(g_selected_verb));
+    if (strcmp(event_name, "use") == 0 && g_selected_inventory[0] != '\0') {
+        event = yaat_find_event(entity->events, entity->event_count, event_name, g_selected_inventory);
+    } else {
+        event = yaat_find_event(entity->events, entity->event_count, event_name, 0);
+    }
     if (event == 0 && strcmp(event_name, "click") != 0) {
         event = yaat_find_event(entity->events, entity->event_count, "click", 0);
     }
-    if (event == 0) event = yaat_find_event(entity->events, entity->event_count, "look", 0);
     yaat_execute_event(event);
 }
 
@@ -1136,6 +1144,24 @@ static int yaat_runtime_click_game(int x, int y)
     return 0;
 }
 
+static void yaat_click_inventory_item(const char *item)
+{
+    YaatEntity *entity;
+    YaatEvent *event;
+    if (item == 0 || item[0] == '\0') return;
+    if (strcmp(g_selected_verb, "use") == 0) {
+        yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), item, strlen(item));
+        return;
+    }
+    entity = yaat_entity_by_id_any_room(item);
+    if (entity == 0) return;
+    event = yaat_find_event(entity->events, entity->event_count, g_selected_verb, 0);
+    if (event == 0 && strcmp(g_selected_verb, "click") != 0) {
+        event = yaat_find_event(entity->events, entity->event_count, "click", 0);
+    }
+    yaat_execute_event(event);
+}
+
 static void yaat_click_game(int x, int y)
 {
     int i;
@@ -1149,9 +1175,11 @@ static void yaat_click_game(int x, int y)
         YaatEntity *e = &room->entities[i];
         if (e->visible && x >= e->x && y >= e->y && x < e->x + e->w && y < e->y + e->h) {
             YaatEvent *event = 0;
-            if (strcmp(e->id, "locked_door") == 0 && yaat_get_var("door_locked") && yaat_has_inventory("brass_key")) event = yaat_find_event(e->events, e->event_count, "use", "brass_key");
-            if (!event) event = yaat_find_event(e->events, e->event_count, "click", 0);
-            if (!event) event = yaat_find_event(e->events, e->event_count, "look", 0);
+            if (strcmp(g_selected_verb, "use") == 0 && g_selected_inventory[0] != '\0') {
+                event = yaat_find_event(e->events, e->event_count, g_selected_verb, g_selected_inventory);
+            }
+            if (!event) event = yaat_find_event(e->events, e->event_count, g_selected_verb, 0);
+            if (!event && strcmp(g_selected_verb, "click") != 0) event = yaat_find_event(e->events, e->event_count, "click", 0);
             yaat_execute_event(event);
             return;
         }
@@ -1280,10 +1308,24 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y)
     int backbuffer_x;
     int backbuffer_y;
 
+    int verb_index;
+    int inventory_index;
+
     if (!yaat_client_to_backbuffer(window, client_x, client_y,
                                    &backbuffer_x, &backbuffer_y)) return;
     g_cursor_x = backbuffer_x;
     g_cursor_y = backbuffer_y;
+    verb_index = yaat_verb_button_at(backbuffer_x, backbuffer_y);
+    if (verb_index >= 0) {
+        yaat_copy(g_selected_verb, sizeof(g_selected_verb), g_verbs[verb_index], strlen(g_verbs[verb_index]));
+        if (strcmp(g_selected_verb, "use") != 0) g_selected_inventory[0] = '\0';
+        return;
+    }
+    inventory_index = yaat_inventory_slot_at(backbuffer_x, backbuffer_y);
+    if (inventory_index >= 0) {
+        yaat_click_inventory_item(g_inventory[inventory_index]);
+        return;
+    }
     if (backbuffer_x < g_player_x) {
         g_player_facing_right = 0;
     } else if (backbuffer_x > g_player_x) {
@@ -1328,6 +1370,7 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         g_renderer_ready = yaat_gdi_renderer_init(&g_renderer, dc, YAAT_BACKBUFFER_WIDTH, YAAT_BACKBUFFER_HEIGHT);
         ReleaseDC(window, dc);
         if (!g_renderer_ready) return -1;
+        yaat_load_verbs();
         yaat_load_demo();
         if (g_runtime_load.ok) {
             runtime_room_index = yaat_room_index_by_id(g_runtime_load.room.id);
