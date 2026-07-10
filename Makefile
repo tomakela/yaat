@@ -22,6 +22,10 @@ WIN32_SOURCES = \
 # Add future engine runtime .c files here.
 ENGINE_RUNTIME_SOURCES = \
 	src/runtime/asset_loader.c \
+	src/runtime/zip_archive.c \
+	src/third_party/miniz/miniz.c \
+	src/third_party/miniz/miniz_zip.c \
+	src/third_party/miniz/miniz_tinfl.c
 	src/runtime/asset_store.c
 
 SOURCES = $(WIN32_SOURCES) $(ENGINE_RUNTIME_SOURCES)
