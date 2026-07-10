@@ -218,6 +218,44 @@ visible=true
 
 If an object omits `animation_frames` or uses `animation_fps=0`, the runtime
 draws the static `sprite=` path exactly as before.
+### Transparency metadata
+
+All non-background graphics can opt into the same transparency description. Backgrounds are always copied opaquely. If a field is omitted, runtime sprites default to `alpha` so 32-bit BMP alpha is preserved when present and older 8-bit/24-bit BMP files remain opaque.
+
+Supported `transparency` values:
+
+- `none`: copy every pixel opaquely.
+- `color-key`: skip pixels matching `transparent_color` / `color_key` in `#RRGGBB`, `0xRRGGBB`, or hex `RRGGBB` form. Magenta (`#ff00ff`) is the recommended key.
+- `alpha`: use the alpha channel from 32-bit BMP files. If the BMP has no nonzero alpha channel, the image draws opaquely.
+- `mask`: use a separate monochrome or color BMP named by `mask` / `mask_bitmap`; black mask pixels are transparent and nonblack mask pixels are visible.
+
+Room object example:
+
+```ini
+; rooms/room000_start/objects.ini
+[brass_key]
+sprite=objects/brass_key.bmp
+x=120
+y=144
+width=16
+height=8
+transparency=color-key
+transparent_color=#ff00ff
+
+[ghost]
+sprite=objects/ghost.bmp
+x=180
+y=86
+width=32
+height=48
+transparency=alpha
+
+[gate]
+sprite=objects/gate.bmp
+mask=objects/gate_mask.bmp
+```
+
+The same modes are intended for player sprites, cursor BMPs under `graphics/cursors/`, reusable UI art under `graphics/ui/`, and inventory icons under `inventory/icons/`. Runtime metadata structs carry a `YaatTransparency` block so loaders and renderers can share the same behavior.
 
 ## Audio
 
