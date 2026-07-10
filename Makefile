@@ -19,9 +19,14 @@ WIN32_SOURCES = \
 	src/platform/win32/gdi_renderer.c \
 	src/script_tokenizer.c
 
-# Add future engine runtime .c files here.
+# Keep this runtime source list in sync with scripts/build_engine_*.bat and docs/toolchain-compatibility.md.
 ENGINE_RUNTIME_SOURCES = \
-	src/runtime/asset_loader.c
+	src/runtime/asset_loader.c \
+	src/runtime/zip_archive.c \
+	src/third_party/miniz/miniz.c \
+	src/third_party/miniz/miniz_zip.c \
+	src/third_party/miniz/miniz_tinfl.c
+	src/runtime/asset_store.c
 
 SOURCES = $(WIN32_SOURCES) $(ENGINE_RUNTIME_SOURCES)
 

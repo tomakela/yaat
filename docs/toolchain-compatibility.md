@@ -39,7 +39,7 @@ wlink ?
 
 ## Open Watcom C/C++ engine build
 
-The Open Watcom engine script compiles the Win32 shell, renderer, tokenizer, and runtime asset-loader scaffolding:
+The Open Watcom engine script compiles the Win32 shell, renderer, tokenizer, and runtime asset-loader scaffolding. Keep this source list in sync with `Makefile` and the fallback `scripts/build_engine_*.bat` commands whenever runtime source files are added:
 
 ```bat
 scripts\build_engine_openwatcom.bat
@@ -49,7 +49,7 @@ Equivalent direct command:
 
 ```bat
 mkdir build
-wcl386 -q -bt=nt -i=src -os -w3 -l=win95 -fe=build\yaat_engine_openwatcom.exe src\main_win32.c src\platform\win32\gdi_renderer.c src\script_tokenizer.c src\runtime\asset_loader.c user32.lib gdi32.lib
+wcl386 -q -bt=nt -i=src -os -w3 -l=win95 -fe=build\yaat_engine_openwatcom.exe src\main_win32.c src\platform\win32\gdi_renderer.c src\script_tokenizer.c src\runtime\asset_loader.c src\runtime\zip_archive.c src\third_party\miniz\miniz.c src\third_party\miniz\miniz_zip.c src\third_party\miniz\miniz_tinfl.c user32.lib gdi32.lib
 ```
 
 Source list:
@@ -59,6 +59,10 @@ src\main_win32.c
 src\platform\win32\gdi_renderer.c
 src\script_tokenizer.c
 src\runtime\asset_loader.c
+src\runtime\zip_archive.c
+src\third_party\miniz\miniz.c
+src\third_party\miniz\miniz_zip.c
+src\third_party\miniz\miniz_tinfl.c
 ```
 
 Link libraries:
