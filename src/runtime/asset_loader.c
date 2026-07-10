@@ -476,6 +476,31 @@ static void yaat_parse_rect(const char *value, int *x, int *y, int *width,
     }
 }
 
+
+static unsigned long yaat_parse_color_value(const char *value, unsigned long default_value)
+{
+    const char *text;
+    unsigned long color;
+
+    if (value == 0) return default_value;
+    text = value;
+    while (*text == ' ' || *text == '\t') ++text;
+    if (text[0] == '#' && sscanf(text + 1, "%lx", &color) == 1) return color & 0x00ffffffUL;
+    if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X') && sscanf(text + 2, "%lx", &color) == 1) return color & 0x00ffffffUL;
+    if (sscanf(text, "%lx", &color) == 1) return color & 0x00ffffffUL;
+    return default_value;
+}
+
+static void yaat_parse_transparency_mode(YaatTransparency *transparency, const char *value)
+{
+    const char *mode;
+
+    if (transparency == 0) return;
+    mode = value != 0 ? value : "";
+    if (strcmp(mode, "none") == 0) transparency->mode = YAAT_TRANSPARENCY_NONE;
+    else if (strcmp(mode, "color-key") == 0 || strcmp(mode, "color_key") == 0) transparency->mode = YAAT_TRANSPARENCY_COLOR_KEY;
+    else if (strcmp(mode, "alpha") == 0) transparency->mode = YAAT_TRANSPARENCY_ALPHA;
+    else if (strcmp(mode, "mask") == 0) transparency->mode = YAAT_TRANSPARENCY_MASK;
 static int yaat_parse_color_value(const char *value, unsigned long *color)
 {
     unsigned int r;
@@ -631,6 +656,8 @@ static void yaat_load_room_objects(YaatAssetStore *store, const char *path, Yaat
                 object = &room->objects[room->object_count++];
                 memset(object, 0, sizeof(*object));
                 object->visible = 1;
+                object->transparency.mode = YAAT_TRANSPARENCY_ALPHA;
+                object->transparency.color_key = 0x00ff00ffUL;
                 yaat_copy_string(object->id, sizeof(object->id), text + 1);
             }
             continue;
@@ -659,6 +686,14 @@ static void yaat_load_room_objects(YaatAssetStore *store, const char *path, Yaat
             object->height = atoi(yaat_trim(equals));
         } else if (strcmp(text, "visible") == 0) {
             object->visible = yaat_bool_value(yaat_trim(equals), 1);
+        } else if (strcmp(text, "transparency") == 0) {
+            yaat_parse_transparency_mode(&object->transparency, yaat_trim(equals));
+        } else if (strcmp(text, "transparent_color") == 0 || strcmp(text, "color_key") == 0) {
+            object->transparency.mode = YAAT_TRANSPARENCY_COLOR_KEY;
+            object->transparency.color_key = yaat_parse_color_value(yaat_trim(equals), object->transparency.color_key);
+        } else if (strcmp(text, "mask") == 0 || strcmp(text, "mask_bitmap") == 0) {
+            object->transparency.mode = YAAT_TRANSPARENCY_MASK;
+            yaat_copy_string(object->transparency.mask, sizeof(object->transparency.mask), yaat_trim(equals));
         } else if (strcmp(text, "transparent_color") == 0 ||
                    strcmp(text, "color_key") == 0) {
             object->transparent_color_enabled =
