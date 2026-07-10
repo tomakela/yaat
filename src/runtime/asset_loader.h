@@ -9,9 +9,7 @@
 #define YAAT_ASSET_MAX_HOTSPOTS 32
 #define YAAT_ASSET_MAX_INVENTORY_ITEMS 64
 #define YAAT_ASSET_MAX_ANIMATION_FRAMES 16
-#define YAAT_ASSET_MAX_ANIMATION_FRAMES 16
 #define YAAT_ASSET_MAX_ANIMATIONS 8
-#define YAAT_ASSET_MAX_ANIMATION_FRAMES 8
 
 typedef struct YaatAssetBuffer {
     unsigned char *data;
@@ -51,12 +49,6 @@ typedef struct YaatRuntimeObject {
     unsigned long transparent_color;
 } YaatRuntimeObject;
 
-typedef struct YaatRuntimePlayer {
-    char idle[YAAT_ASSET_MAX_PATH];
-    char walk_left[YAAT_ASSET_MAX_PATH];
-    char walk_right[YAAT_ASSET_MAX_PATH];
-} YaatRuntimePlayer;
-
 typedef struct YaatRuntimeHotspot {
     char id[YAAT_ASSET_MAX_NAME];
     char name[YAAT_ASSET_MAX_NAME];
@@ -92,6 +84,9 @@ typedef struct YaatAnimationClip {
 } YaatAnimationClip;
 
 typedef struct YaatRuntimePlayer {
+    char idle[YAAT_ASSET_MAX_PATH];
+    char walk_left[YAAT_ASSET_MAX_PATH];
+    char walk_right[YAAT_ASSET_MAX_PATH];
     int animation_count;
     YaatAnimationClip animations[YAAT_ASSET_MAX_ANIMATIONS];
 } YaatRuntimePlayer;
@@ -137,7 +132,6 @@ typedef struct YaatRuntimeLoadResult {
     YaatRuntimePlayer player;
     YaatRuntimeRoom room;
     YaatRuntimeInventory inventory;
-    YaatRuntimePlayer player;
 } YaatRuntimeLoadResult;
 
 typedef struct YaatAssetStore {
@@ -161,9 +155,6 @@ void yaat_runtime_load_inventory_from_store(YaatAssetStore *store,
 int yaat_runtime_animation_frame_index(const int *timing_ms, int frame_count,
                                        unsigned long elapsed_ms);
 
-void yaat_runtime_load_room_from_store(YaatAssetStore *store,
-                                       const char *room_id,
-                                       YaatRuntimeLoadResult *result);
 void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
                                              YaatRuntimeLoadResult *result);
 void yaat_runtime_load_room_from_store(YaatAssetStore *store,
