@@ -116,6 +116,7 @@ static char g_dialogue_speaker[32];
 static char g_dialogue_text[YAAT_TEXT_MAX];
 static int g_dialogue_visible;
 static YaatRuntimeLoadResult g_runtime_load;
+static YaatAssetStore g_asset_store;
 static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
 static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
@@ -135,6 +136,7 @@ static YaatBitmap g_player_bitmap;
 
 static void yaat_runtime_join_path(char *dst, size_t dst_size,
                                    const char *left, const char *right);
+static const char *yaat_runtime_logical_path(const char *path);
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -273,7 +275,8 @@ static void yaat_unload_bitmap(YaatBitmap *bitmap)
 
 static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
 {
-    FILE *file;
+    unsigned char *data;
+    size_t data_size;
     unsigned char file_header[14];
     unsigned char info_header[40];
     unsigned long pixel_offset;
@@ -286,38 +289,29 @@ static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
     unsigned long row_stride;
     unsigned long palette[256];
     unsigned long palette_entries;
-    unsigned char *row;
     unsigned long *pixels;
     int x;
     int y;
 
-    if (path == 0 || path[0] == '\0') {
-        return 0;
-    }
-    if (strcmp(bitmap->path, path) == 0 && bitmap->pixels != 0) {
-        return 1;
-    }
+    if (path == 0 || path[0] == '\0') return 0;
+    if (strcmp(bitmap->path, path) == 0 && bitmap->pixels != 0) return 1;
 
-    file = fopen(path, "rb");
-    if (file == 0) {
+    if (!yaat_asset_read_all(&g_asset_store, path, &data, &data_size)) {
         yaat_unload_bitmap(bitmap);
-        yaat_copy(bitmap->path, sizeof(bitmap->path), path,
-                  strlen(path));
+        yaat_copy(bitmap->path, sizeof(bitmap->path), path, strlen(path));
         return 0;
     }
-
-    if (fread(file_header, 1, sizeof(file_header), file) !=
-        sizeof(file_header) ||
-        fread(info_header, 1, sizeof(info_header), file) !=
-        sizeof(info_header)) {
-        fclose(file);
+    if (data_size < sizeof(file_header) + sizeof(info_header)) {
+        free(data);
         yaat_unload_bitmap(bitmap);
         return 0;
     }
+    memcpy(file_header, data, sizeof(file_header));
+    memcpy(info_header, data + sizeof(file_header), sizeof(info_header));
 
     if (file_header[0] != 'B' || file_header[1] != 'M' ||
         yaat_read_le32(info_header) < 40) {
-        fclose(file);
+        free(data);
         yaat_unload_bitmap(bitmap);
         return 0;
     }
@@ -337,38 +331,35 @@ static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
 
     if (bmp_width <= 0 || bmp_height <= 0 || planes != 1 ||
         compression != BI_RGB ||
-        (bits_per_pixel != 8 && bits_per_pixel != 24 &&
-         bits_per_pixel != 32)) {
-        fclose(file);
+        (bits_per_pixel != 8 && bits_per_pixel != 24 && bits_per_pixel != 32)) {
+        free(data);
+        yaat_unload_bitmap(bitmap);
+        return 0;
+    }
+
+    row_stride = ((((unsigned long)bmp_width * bits_per_pixel) + 31) / 32) * 4;
+    if ((size_t)pixel_offset + ((size_t)row_stride * (size_t)bmp_height) > data_size) {
+        free(data);
         yaat_unload_bitmap(bitmap);
         return 0;
     }
 
     if (bits_per_pixel == 8) {
-        unsigned char palette_color[4];
         unsigned long i;
-
         if (pixel_offset < 54) {
-            fclose(file);
+            free(data);
             yaat_unload_bitmap(bitmap);
             return 0;
         }
         palette_entries = (pixel_offset - 54) / 4;
-        if (palette_entries > 256) {
-            palette_entries = 256;
-        }
-        if (palette_entries == 0 || fseek(file, 54, SEEK_SET) != 0) {
-            fclose(file);
+        if (palette_entries > 256) palette_entries = 256;
+        if (palette_entries == 0 || 54 + (palette_entries * 4) > data_size) {
+            free(data);
             yaat_unload_bitmap(bitmap);
             return 0;
         }
         for (i = 0; i < palette_entries; ++i) {
-            if (fread(palette_color, 1, sizeof(palette_color), file) !=
-                sizeof(palette_color)) {
-                fclose(file);
-                yaat_unload_bitmap(bitmap);
-                return 0;
-            }
+            const unsigned char *palette_color = data + 54 + (i * 4);
             palette[i] = ((unsigned long)palette_color[0]) |
                          ((unsigned long)palette_color[1] << 8) |
                          ((unsigned long)palette_color[2] << 16);
@@ -377,67 +368,32 @@ static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
         palette_entries = 0;
     }
 
-    row_stride = ((((unsigned long)bmp_width * bits_per_pixel) + 31) / 32) * 4;
-    row = (unsigned char *)malloc(row_stride);
     pixels = (unsigned long *)malloc((size_t)bmp_width * (size_t)bmp_height *
                                      sizeof(unsigned long));
-    if (row == 0 || pixels == 0) {
-        if (row != 0) {
-            free(row);
-        }
-        if (pixels != 0) {
-            free(pixels);
-        }
-        fclose(file);
-        yaat_unload_bitmap(bitmap);
-        return 0;
-    }
-
-    if (fseek(file, (long)pixel_offset, SEEK_SET) != 0) {
-        free(row);
-        free(pixels);
-        fclose(file);
+    if (pixels == 0) {
+        free(data);
         yaat_unload_bitmap(bitmap);
         return 0;
     }
 
     for (y = 0; y < bmp_height; ++y) {
-        int dst_y;
-
-        if (fread(row, 1, row_stride, file) != row_stride) {
-            free(row);
-            free(pixels);
-            fclose(file);
-            yaat_unload_bitmap(bitmap);
-            return 0;
-        }
-
-        dst_y = top_down ? y : (int)bmp_height - 1 - y;
+        int dst_y = top_down ? y : (int)bmp_height - 1 - y;
+        const unsigned char *row = data + pixel_offset + ((size_t)y * row_stride);
         for (x = 0; x < bmp_width; ++x) {
-            unsigned char *src;
-            unsigned long b;
-            unsigned long g;
-            unsigned long r;
-
-            src = row + ((bits_per_pixel / 8) * x);
+            const unsigned char *src = row + ((bits_per_pixel / 8) * x);
             if (bits_per_pixel == 8) {
-                if (src[0] >= palette_entries) {
-                    pixels[(dst_y * (int)bmp_width) + x] = 0;
-                } else {
-                    pixels[(dst_y * (int)bmp_width) + x] = palette[src[0]];
-                }
-            } else {
-                b = src[0];
-                g = src[1];
-                r = src[2];
                 pixels[(dst_y * (int)bmp_width) + x] =
-                    b | (g << 8) | (r << 16);
+                    src[0] < palette_entries ? palette[src[0]] : 0;
+            } else {
+                unsigned long b = src[0];
+                unsigned long g = src[1];
+                unsigned long r = src[2];
+                pixels[(dst_y * (int)bmp_width) + x] = b | (g << 8) | (r << 16);
             }
         }
     }
 
-    free(row);
-    fclose(file);
+    free(data);
     yaat_unload_bitmap(bitmap);
     bitmap->pixels = pixels;
     bitmap->width = (int)bmp_width;
@@ -502,7 +458,8 @@ static int yaat_draw_runtime_background(void)
         return 0;
     }
 
-    yaat_runtime_join_path(path, sizeof(path), g_runtime_load.room.room_path,
+    yaat_runtime_join_path(path, sizeof(path),
+                           yaat_runtime_logical_path(g_runtime_load.room.room_path),
                            g_runtime_load.room.background);
     if (!yaat_load_bmp(&g_background_bitmap, path)) {
         return 0;
@@ -571,12 +528,8 @@ static void yaat_draw_player(void)
     } else {
         sprite_name = "player_idle.bmp";
     }
-    yaat_runtime_join_path(path, sizeof(path), "game/graphics/sprites",
+    yaat_runtime_join_path(path, sizeof(path), "graphics/sprites",
                            sprite_name);
-    if (!yaat_load_bmp(&g_player_bitmap, path)) {
-        yaat_runtime_join_path(path, sizeof(path), "graphics/sprites",
-                               sprite_name);
-    }
     if (!yaat_load_bmp(&g_player_bitmap, path)) {
         yaat_draw_player_placeholder();
         return;
@@ -639,7 +592,8 @@ static void yaat_draw_runtime_room(void)
         }
         memset(&object_bitmap, 0, sizeof(object_bitmap));
         yaat_runtime_join_path(object_path, sizeof(object_path),
-                               g_runtime_load.room.room_path, object->sprite);
+                               yaat_runtime_logical_path(g_runtime_load.room.room_path),
+                               object->sprite);
         if (yaat_load_bmp(&object_bitmap, object_path)) {
             yaat_draw_bitmap(&object_bitmap, object->x, object->y);
             yaat_unload_bitmap(&object_bitmap);
@@ -700,23 +654,25 @@ static char *yaat_trim_text(char *text)
 static void yaat_load_runtime_hotspots(void)
 {
     char path[YAAT_ASSET_MAX_PATH];
-    FILE *file;
-    char line[256];
+    unsigned char *buffer;
+    size_t buffer_size;
+    char *line;
     YaatRuntimeHotspot *hotspot;
 
     g_runtime_hotspot_count = 0;
     if (!g_runtime_load.ok || g_runtime_load.room.room_path[0] == '\0') return;
 
-    yaat_copy(path, sizeof(path), g_runtime_load.room.room_path,
-              strlen(g_runtime_load.room.room_path));
+    yaat_copy(path, sizeof(path),
+              yaat_runtime_logical_path(g_runtime_load.room.room_path),
+              strlen(yaat_runtime_logical_path(g_runtime_load.room.room_path)));
     if (strlen(path) + strlen("/hotspots.ini") >= sizeof(path)) return;
     strcat(path, "/hotspots.ini");
 
-    file = fopen(path, "r");
-    if (!file) return;
+    if (!yaat_asset_read_all(&g_asset_store, path, &buffer, &buffer_size)) return;
 
     hotspot = 0;
-    while (fgets(line, sizeof(line), file) != 0) {
+    for (line = strtok((char *)buffer, "\n"); line != 0;
+         line = strtok(0, "\n")) {
         char *text;
         char *equals;
 
@@ -749,7 +705,7 @@ static void yaat_load_runtime_hotspots(void)
                       strlen(equals));
         }
     }
-    fclose(file);
+    free(buffer);
 }
 
 static YaatRuntimeHotspot *yaat_runtime_hotspot_at(int x, int y)
@@ -1034,29 +990,21 @@ static void yaat_parse_script_text(const char *source)
 
 static void yaat_load_script_file(const char *path)
 {
-    FILE *file = fopen(path, "rb");
-    long size;
-    char *buffer;
-    if (!file) return;
-    fseek(file, 0, SEEK_END);
-    size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    buffer = (char *)malloc((size_t)size + 1);
-    if (buffer) {
-        fread(buffer, 1, (size_t)size, file);
-        buffer[size] = '\0';
-        yaat_parse_script_text(buffer);
-        free(buffer);
-    }
-    fclose(file);
+    unsigned char *buffer;
+    size_t size;
+
+    if (!yaat_asset_read_all(&g_asset_store, path, &buffer, &size)) return;
+    buffer[size] = '\0';
+    yaat_parse_script_text((const char *)buffer);
+    free(buffer);
 }
 
 static void yaat_load_demo(void)
 {
-    yaat_load_script_file("game/scripts/startup.yaat");
-    yaat_load_script_file("game/rooms/room000_start/script.yaat");
-    yaat_load_script_file("game/rooms/room001_intro/script.yaat");
-    yaat_load_script_file("game/rooms/room002_exit/script.yaat");
+    yaat_load_script_file("scripts/startup.yaat");
+    yaat_load_script_file("rooms/room000_start/script.yaat");
+    yaat_load_script_file("rooms/room001_intro/script.yaat");
+    yaat_load_script_file("rooms/room002_exit/script.yaat");
     yaat_enter_room(0);
 }
 
@@ -1126,6 +1074,15 @@ static void yaat_nudge_player_target(int dx, int dy)
 }
 
 
+static const char *yaat_runtime_logical_path(const char *path)
+{
+    if (path == 0) return "";
+    if (strncmp(path, "game/", 5) == 0 || strncmp(path, "game\\", 5) == 0) {
+        return path + 5;
+    }
+    return path;
+}
+
 static void yaat_runtime_join_path(char *dst, size_t dst_size, const char *left, const char *right)
 {
     size_t len;
@@ -1183,15 +1140,15 @@ static int yaat_runtime_ini_hit(const char *path, int x, int y, char *id,
                                 size_t id_size, char *script_event,
                                 size_t script_event_size)
 {
-    FILE *file;
-    char line[256];
+    unsigned char *buffer;
+    size_t buffer_size;
+    char *line;
     char current_id[YAAT_ASSET_MAX_NAME];
     char current_event[32];
     int rx, ry, rw, rh;
     int has_rect;
 
-    file = fopen(path, "r");
-    if (file == 0) return 0;
+    if (!yaat_asset_read_all(&g_asset_store, path, &buffer, &buffer_size)) return 0;
     current_id[0] = '\0';
     current_event[0] = '\0';
     rx = ry = rw = rh = has_rect = 0;
@@ -1204,12 +1161,13 @@ static int yaat_runtime_ini_hit(const char *path, int x, int y, char *id,
             yaat_copy(script_event, script_event_size, \
                       current_event[0] != '\0' ? current_event : "on_click", \
                       strlen(current_event[0] != '\0' ? current_event : "on_click")); \
-            fclose(file); \
+            free(buffer); \
             return 1; \
         } \
     } while (0)
 
-    while (fgets(line, sizeof(line), file) != 0) {
+    for (line = strtok((char *)buffer, "\n"); line != 0;
+         line = strtok(0, "\n")) {
         char *text = line;
         char *equals;
         while (*text == ' ' || *text == '\t' || *text == '\r' || *text == '\n') ++text;
@@ -1254,7 +1212,7 @@ static int yaat_runtime_ini_hit(const char *path, int x, int y, char *id,
         }
     }
     YAAT_RUNTIME_CHECK_HIT();
-    fclose(file);
+    free(buffer);
     return 0;
 #undef YAAT_RUNTIME_CHECK_HIT
 }
@@ -1271,7 +1229,9 @@ static int yaat_runtime_click_game(int x, int y)
         YaatRuntimeObject *object = &room->objects[i];
         if (object->visible && x >= object->x && y >= object->y &&
             x < object->x + object->width && y < object->y + object->height) {
-            yaat_runtime_join_path(path, sizeof(path), room->room_path, "objects.ini");
+            yaat_runtime_join_path(path, sizeof(path),
+                                   yaat_runtime_logical_path(room->room_path),
+                                   "objects.ini");
             if (!yaat_runtime_ini_hit(path, x, y, id, sizeof(id), event_name, sizeof(event_name))) {
                 yaat_copy(id, sizeof(id), object->id, strlen(object->id));
                 yaat_copy(event_name, sizeof(event_name), "on_click", strlen("on_click"));
@@ -1281,7 +1241,9 @@ static int yaat_runtime_click_game(int x, int y)
         }
     }
 
-    yaat_runtime_join_path(path, sizeof(path), room->room_path, "hotspots.ini");
+    yaat_runtime_join_path(path, sizeof(path),
+                           yaat_runtime_logical_path(room->room_path),
+                           "hotspots.ini");
     if (yaat_runtime_ini_hit(path, x, y, id, sizeof(id), event_name, sizeof(event_name))) {
         yaat_runtime_execute_entity_event(id, event_name);
         return 1;
@@ -1563,6 +1525,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
     (void)previous_instance;
     (void)command_line;
 
+    yaat_asset_store_init(&g_asset_store, "game");
+    yaat_runtime_load_start_room("game/game.ini", &g_runtime_load);
     yaat_asset_store_init_loose(&asset_store, "game");
     yaat_runtime_load_start_room_from_store(&asset_store, &g_runtime_load);
 
