@@ -432,6 +432,80 @@ static void yaat_draw_player_placeholder(void)
                    0x001f2430UL);
 }
 
+
+static YaatRuntimeInventoryItem *yaat_find_runtime_inventory_item(const char *id)
+{
+    int i;
+
+    if (id == 0) return 0;
+    for (i = 0; i < g_runtime_load.inventory.item_count; ++i) {
+        if (strcmp(g_runtime_load.inventory.items[i].id, id) == 0) {
+            return &g_runtime_load.inventory.items[i];
+        }
+    }
+    return 0;
+}
+
+static const char *yaat_inventory_item_icon_path(YaatRuntimeInventoryItem *item,
+                                                 unsigned long elapsed_ms)
+{
+    int timings[YAAT_ASSET_MAX_ANIMATION_FRAMES];
+    int i;
+    int frame;
+
+    if (item == 0) return "";
+    if (item->frame_count > 0) {
+        for (i = 0; i < item->frame_count; ++i) {
+            timings[i] = item->timing_ms[i] > 0 ? item->timing_ms[i] : 250;
+        }
+        frame = yaat_runtime_animation_frame_index(timings, item->frame_count,
+                                                   elapsed_ms);
+        return item->frames[frame];
+    }
+    return item->icon;
+}
+
+static void yaat_draw_inventory_bar(void)
+{
+    int i;
+    int slot_x;
+    int slot_y;
+    unsigned long elapsed_ms;
+
+    yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT,
+                   YAAT_BACKBUFFER_WIDTH, YAAT_BACKBUFFER_HEIGHT - YAAT_PLAYFIELD_HEIGHT,
+                   0x00101018UL);
+    elapsed_ms = GetTickCount();
+    for (i = 0; i < g_inventory_count; ++i) {
+        YaatRuntimeInventoryItem *item;
+        YaatBitmap icon_bitmap;
+        const char *icon_path;
+        char logical_path[YAAT_ASSET_MAX_PATH * 2];
+
+        slot_x = 8 + (i * 38);
+        slot_y = YAAT_PLAYFIELD_HEIGHT + 4;
+        yaat_draw_rect(&g_renderer, slot_x, slot_y, 34, 32, 0x00404048UL);
+        yaat_draw_rect(&g_renderer, slot_x + 1, slot_y + 1, 32, 30, 0x00202028UL);
+
+        item = yaat_find_runtime_inventory_item(g_inventory[i]);
+        icon_path = yaat_inventory_item_icon_path(item, elapsed_ms);
+        memset(&icon_bitmap, 0, sizeof(icon_bitmap));
+        if (icon_path[0] != '\0') {
+            yaat_runtime_join_path(logical_path, sizeof(logical_path),
+                                   "inventory", icon_path);
+            if (yaat_load_bmp(&icon_bitmap, logical_path)) {
+                yaat_draw_bitmap(&icon_bitmap,
+                                 slot_x + 17 - (icon_bitmap.width / 2),
+                                 slot_y + 16 - (icon_bitmap.height / 2));
+                yaat_unload_bitmap(&icon_bitmap);
+                continue;
+            }
+        }
+        yaat_draw_rect(&g_renderer, slot_x + 8, slot_y + 8, 18, 16,
+                       yaat_hash_color(g_inventory[i], 0x00a07030UL));
+    }
+}
+
 static void yaat_draw_player(void)
 {
     char path[YAAT_ASSET_MAX_PATH * 2];
@@ -530,6 +604,7 @@ static void yaat_draw_runtime_room(void)
     }
 
     yaat_draw_player();
+    yaat_draw_inventory_bar();
 }
 
 
@@ -908,7 +983,7 @@ static void yaat_draw_script_scene(void)
     yaat_draw_rect(&g_renderer, g_target_x - 5, g_target_y - 1, 11, 3, 0x000f3c70UL);
     yaat_draw_rect(&g_renderer, g_target_x - 1, g_target_y - 5, 3, 11, 0x000f3c70UL);
     yaat_draw_player();
-    yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
+    yaat_draw_inventory_bar();
     if (g_dialogue_visible) {
         yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_speaker, 0x00ffd060UL);
         yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_text, 0x00f0f0f0UL);

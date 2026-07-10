@@ -407,6 +407,122 @@ static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRunt
 }
 
 
+
+static int yaat_parse_semicolon_paths(const char *value,
+                                      char paths[][YAAT_ASSET_MAX_PATH],
+                                      int max_paths)
+{
+    char copy[YAAT_LINE_MAX];
+    char *part;
+    int count;
+
+    if (value == 0 || max_paths <= 0) return 0;
+    yaat_copy_string(copy, sizeof(copy), value);
+    count = 0;
+    part = strtok(copy, ";");
+    while (part != 0 && count < max_paths) {
+        part = yaat_trim(part);
+        if (part[0] != '\0') {
+            yaat_copy_string(paths[count], YAAT_ASSET_MAX_PATH, part);
+            ++count;
+        }
+        part = strtok(0, ";");
+    }
+    return count;
+}
+
+static int yaat_parse_semicolon_ints(const char *value, int *items,
+                                     int max_items)
+{
+    char copy[YAAT_LINE_MAX];
+    char *part;
+    int count;
+
+    if (value == 0 || items == 0 || max_items <= 0) return 0;
+    yaat_copy_string(copy, sizeof(copy), value);
+    count = 0;
+    part = strtok(copy, ";");
+    while (part != 0 && count < max_items) {
+        part = yaat_trim(part);
+        items[count++] = atoi(part);
+        part = strtok(0, ";");
+    }
+    return count;
+}
+
+int yaat_runtime_animation_frame_index(const int *timing_ms, int frame_count,
+                                       unsigned long elapsed_ms)
+{
+    int i;
+    unsigned long total;
+    unsigned long cursor;
+    unsigned long duration;
+
+    if (frame_count <= 1 || timing_ms == 0) return 0;
+    total = 0;
+    for (i = 0; i < frame_count; ++i) {
+        total += (unsigned long)(timing_ms[i] > 0 ? timing_ms[i] : 1);
+    }
+    if (total == 0) return 0;
+    cursor = elapsed_ms % total;
+    for (i = 0; i < frame_count; ++i) {
+        duration = (unsigned long)(timing_ms[i] > 0 ? timing_ms[i] : 1);
+        if (cursor < duration) return i;
+        cursor -= duration;
+    }
+    return frame_count - 1;
+}
+
+void yaat_runtime_load_inventory_from_store(YaatAssetStore *store,
+                                            const char *path,
+                                            YaatRuntimeInventory *inventory)
+{
+    YaatAssetBuffer buffer;
+    YaatIniReader reader;
+    char line[YAAT_LINE_MAX];
+    YaatRuntimeInventoryItem *item;
+
+    if (inventory == 0) return;
+    memset(inventory, 0, sizeof(*inventory));
+    if (!yaat_asset_store_load(store, path, &buffer)) return;
+    reader.data = (const char *)buffer.data;
+    reader.size = buffer.size;
+    reader.offset = 0;
+    item = 0;
+    while (yaat_ini_read_line(&reader, line, sizeof(line))) {
+        char *text;
+        char *equals;
+        text = yaat_trim(line);
+        if (text[0] == '\0' || text[0] == ';' || text[0] == '#') continue;
+        if (text[0] == '[') {
+            char *close = strchr(text, ']');
+            item = 0;
+            if (close != 0 && inventory->item_count < YAAT_ASSET_MAX_INVENTORY_ITEMS) {
+                *close = '\0';
+                item = &inventory->items[inventory->item_count++];
+                memset(item, 0, sizeof(*item));
+                item->stackable = 1;
+                yaat_copy_string(item->id, sizeof(item->id), text + 1);
+            }
+            continue;
+        }
+        if (item == 0) continue;
+        equals = strchr(text, '=');
+        if (equals == 0) continue;
+        *equals = '\0';
+        text = yaat_trim(text);
+        ++equals;
+        if (strcmp(text, "name") == 0) yaat_copy_string(item->name, sizeof(item->name), yaat_trim(equals));
+        else if (strcmp(text, "icon") == 0) yaat_copy_string(item->icon, sizeof(item->icon), yaat_trim(equals));
+        else if (strcmp(text, "frames") == 0) item->frame_count = yaat_parse_semicolon_paths(yaat_trim(equals), item->frames, YAAT_ASSET_MAX_ANIMATION_FRAMES);
+        else if (strcmp(text, "timing_ms") == 0) yaat_parse_semicolon_ints(yaat_trim(equals), item->timing_ms, YAAT_ASSET_MAX_ANIMATION_FRAMES);
+        else if (strcmp(text, "description") == 0) yaat_copy_string(item->description, sizeof(item->description), yaat_trim(equals));
+        else if (strcmp(text, "script") == 0) yaat_copy_string(item->script, sizeof(item->script), yaat_trim(equals));
+        else if (strcmp(text, "stackable") == 0) item->stackable = yaat_bool_value(yaat_trim(equals), 1);
+    }
+    yaat_asset_buffer_free(&buffer);
+}
+
 static void yaat_parse_rect(const char *value, int *x, int *y, int *width,
                             int *height)
 {
@@ -586,6 +702,7 @@ void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
     }
     yaat_load_room_objects(store, objects_ini, &result->room);
     yaat_load_room_hotspots(store, hotspots_ini, &result->room);
+    yaat_runtime_load_inventory_from_store(store, "inventory/items.ini", &result->inventory);
 }
 
 void yaat_runtime_load_start_room(const char *game_ini_path,
