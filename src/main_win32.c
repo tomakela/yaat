@@ -56,10 +56,13 @@ static DWORD g_windowed_style;
 typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
 static YaatBitmap g_background_bitmap;
 static YaatBitmap g_player_bitmap;
+static int g_player_transparent_color_enabled;
+static unsigned long g_player_transparent_color;
 
 static void yaat_runtime_join_path(char *dst, size_t dst_size,
                                    const char *left, const char *right);
 static const char *yaat_runtime_logical_path(const char *path);
+static char *yaat_trim_text(char *text);
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -147,6 +150,37 @@ static void yaat_draw_text_block(int x, int y, const char *text, unsigned long c
         if (text[i] != ' ') yaat_draw_rect(&g_renderer, cx, cy, 5, 7, color);
         cx += 6;
     }
+}
+
+
+static int yaat_parse_color(const char *text, unsigned long *color)
+{
+    unsigned int r;
+    unsigned int g;
+    unsigned int b;
+    char *end;
+    unsigned long parsed;
+
+    if (text == 0 || color == 0) return 0;
+    while (*text == ' ' || *text == '\t') ++text;
+    if (text[0] == '#') {
+        if (sscanf(text + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+            *color = (b & 0xff) | ((g & 0xff) << 8) | ((r & 0xff) << 16);
+            return 1;
+        }
+        return 0;
+    }
+    if (sscanf(text, "%u,%u,%u", &r, &g, &b) == 3) {
+        *color = (b & 0xff) | ((g & 0xff) << 8) | ((r & 0xff) << 16);
+        return 1;
+    }
+    parsed = strtoul(text, &end, 0);
+    while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') ++end;
+    if (end != text && *end == '\0') {
+        *color = parsed & 0x00ffffffUL;
+        return 1;
+    }
+    return 0;
 }
 
 static unsigned long yaat_hash_color(const char *text, unsigned long fallback)
@@ -325,7 +359,9 @@ static int yaat_load_bmp(YaatBitmap *bitmap, const char *path)
     return 1;
 }
 
-static void yaat_draw_bitmap(YaatBitmap *bitmap, int dst_x, int dst_y)
+static void yaat_draw_bitmap_keyed(YaatBitmap *bitmap, int dst_x, int dst_y,
+                                  int transparent_color_enabled,
+                                  unsigned long transparent_color)
 {
     int src_x0;
     int src_y0;
@@ -361,12 +397,29 @@ static void yaat_draw_bitmap(YaatBitmap *bitmap, int dst_x, int dst_y)
         return;
     }
 
+    transparent_color &= 0x00ffffffUL;
     for (y = 0; y < copy_height; ++y) {
-        memcpy((unsigned char *)g_renderer.pixels + ((dst_y + y) * g_renderer.pitch) +
-                   ((size_t)dst_x * sizeof(unsigned long)),
-               bitmap->pixels + ((src_y0 + y) * bitmap->width) + src_x0,
-               (size_t)copy_width * sizeof(unsigned long));
+        unsigned long *dst_row = (unsigned long *)
+            ((unsigned char *)g_renderer.pixels + ((dst_y + y) * g_renderer.pitch)) + dst_x;
+        unsigned long *src_row =
+            bitmap->pixels + ((src_y0 + y) * bitmap->width) + src_x0;
+        int x;
+
+        if (!transparent_color_enabled) {
+            memcpy(dst_row, src_row, (size_t)copy_width * sizeof(unsigned long));
+            continue;
+        }
+        for (x = 0; x < copy_width; ++x) {
+            if ((src_row[x] & 0x00ffffffUL) != transparent_color) {
+                dst_row[x] = src_row[x];
+            }
+        }
     }
+}
+
+static void yaat_draw_bitmap(YaatBitmap *bitmap, int dst_x, int dst_y)
+{
+    yaat_draw_bitmap_keyed(bitmap, dst_x, dst_y, 0, 0);
 }
 
 static int yaat_draw_runtime_background(void)
@@ -432,6 +485,45 @@ static void yaat_draw_player_placeholder(void)
                    0x001f2430UL);
 }
 
+
+static void yaat_load_player_sprite_metadata(void)
+{
+    unsigned char *buffer;
+    size_t buffer_size;
+    char *line;
+
+    g_player_transparent_color_enabled = 0;
+    g_player_transparent_color = 0;
+    if (!yaat_asset_read_all(&g_asset_store, "graphics/sprites/player.ini",
+                             &buffer, &buffer_size)) {
+        return;
+    }
+
+    for (line = strtok((char *)buffer, "\n"); line != 0; line = strtok(0, "\n")) {
+        char *text;
+        char *equals;
+
+        text = yaat_trim_text(line);
+        if (text[0] == '\0' || text[0] == ';' || text[0] == '#' ||
+            text[0] == '[') {
+            continue;
+        }
+        equals = strchr(text, '=');
+        if (equals == 0) {
+            continue;
+        }
+        *equals = '\0';
+        text = yaat_trim_text(text);
+        if (strcmp(text, "transparent_color") == 0 ||
+            strcmp(text, "color_key") == 0) {
+            g_player_transparent_color_enabled =
+                yaat_parse_color(yaat_trim_text(equals + 1),
+                                 &g_player_transparent_color);
+        }
+    }
+    free(buffer);
+}
+
 static void yaat_draw_player(void)
 {
     char path[YAAT_ASSET_MAX_PATH * 2];
@@ -460,7 +552,9 @@ static void yaat_draw_player(void)
 
     draw_x = g_player_x - (g_player_bitmap.width / 2);
     draw_y = g_player_y - g_player_bitmap.height;
-    yaat_draw_bitmap(&g_player_bitmap, draw_x, draw_y);
+    yaat_draw_bitmap_keyed(&g_player_bitmap, draw_x, draw_y,
+                           g_player_transparent_color_enabled,
+                           g_player_transparent_color);
 }
 
 static void yaat_draw_runtime_room(void)
@@ -518,7 +612,9 @@ static void yaat_draw_runtime_room(void)
                                yaat_runtime_logical_path(g_runtime_load.room.room_path),
                                object->sprite);
         if (yaat_load_bmp(&object_bitmap, object_path)) {
-            yaat_draw_bitmap(&object_bitmap, object->x, object->y);
+            yaat_draw_bitmap_keyed(&object_bitmap, object->x, object->y,
+                                   object->transparent_color_enabled,
+                                   object->transparent_color);
             yaat_unload_bitmap(&object_bitmap);
             continue;
         }
@@ -890,6 +986,7 @@ static void yaat_load_demo(void)
     yaat_load_script_file("rooms/room000_start/script.yaat");
     yaat_load_script_file("rooms/room001_intro/script.yaat");
     yaat_load_script_file("rooms/room002_exit/script.yaat");
+    yaat_load_player_sprite_metadata();
     yaat_enter_room(0);
 }
 

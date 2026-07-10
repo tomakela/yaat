@@ -432,6 +432,37 @@ static void yaat_parse_rect(const char *value, int *x, int *y, int *width,
     }
 }
 
+static int yaat_parse_color_value(const char *value, unsigned long *color)
+{
+    unsigned int r;
+    unsigned int g;
+    unsigned int b;
+    char *end;
+    unsigned long parsed;
+
+    if (value == 0 || color == 0) {
+        return 0;
+    }
+    value = yaat_trim((char *)value);
+    if (value[0] == '#') {
+        if (sscanf(value + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+            *color = (b & 0xff) | ((g & 0xff) << 8) | ((r & 0xff) << 16);
+            return 1;
+        }
+        return 0;
+    }
+    if (sscanf(value, "%u,%u,%u", &r, &g, &b) == 3) {
+        *color = (b & 0xff) | ((g & 0xff) << 8) | ((r & 0xff) << 16);
+        return 1;
+    }
+    parsed = strtoul(value, &end, 0);
+    if (end != value && yaat_trim(end)[0] == '\0') {
+        *color = parsed & 0x00ffffffUL;
+        return 1;
+    }
+    return 0;
+}
+
 static void yaat_load_room_objects(YaatAssetStore *store, const char *path, YaatRuntimeRoom *room)
 {
     YaatAssetBuffer buffer;
@@ -490,6 +521,10 @@ static void yaat_load_room_objects(YaatAssetStore *store, const char *path, Yaat
             object->height = atoi(yaat_trim(equals));
         } else if (strcmp(text, "visible") == 0) {
             object->visible = yaat_bool_value(yaat_trim(equals), 1);
+        } else if (strcmp(text, "transparent_color") == 0 ||
+                   strcmp(text, "color_key") == 0) {
+            object->transparent_color_enabled =
+                yaat_parse_color_value(yaat_trim(equals), &object->transparent_color);
         }
     }
     yaat_asset_buffer_free(&buffer);
