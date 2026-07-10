@@ -471,7 +471,7 @@ shake 350 6
 
 ## Control flow
 
-The only control-flow construct in version 0 is `if` / `else`.
+The control-flow construct in version 0 is `if` / `else`.
 
 ```text
 if <condition> {
@@ -503,10 +503,10 @@ This is equivalent to checking `door_locked == true`.
 
 ### Equality checks
 
-Simple equality checks compare a variable to a value:
+Simple comparisons compare a variable to a value:
 
 ```text
-if <id> == <value> {
+if <id> <op> <value> {
   ...
 }
 ```
@@ -527,7 +527,7 @@ if coins == 3 {
 }
 ```
 
-Version 0 only defines equality with `==`. It does not include `<`, `>`, `<=`, `>=`, boolean `and`, boolean `or`, or boolean `not`.
+Version 0 defines `==`, `!=`, `<`, `<=`, `>`, and `>=` comparisons. Boolean `and`, boolean `or`, and boolean `not` are intentionally not included.
 
 ## Complete sample script
 
@@ -647,7 +647,7 @@ room treasure_room {
 
 A first C implementation can parse this language with a small tokenizer and recursive-descent parser:
 
-1. Tokenize identifiers, strings, integers, `{`, `}`, `,`, `=`, and `==`.
+1. Tokenize identifiers, strings, integers, `{`, `}`, `,`, `=`, `==`, `!=`, `<`, `<=`, `>`, and `>=`.
 2. Parse top-level declarations until end of file.
 3. Parse blocks by reading declarations, fields, and handlers until `}`.
 4. Parse command blocks as lists of commands and `if` statements.

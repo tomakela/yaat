@@ -232,6 +232,16 @@ static void scan_token(ScriptTokenizer *tokenizer) {
     case '=':
         add_token(tokenizer, match(tokenizer, '=') ? SCRIPT_TOKEN_EQUAL_EQUAL : SCRIPT_TOKEN_EQUAL);
         break;
+    case '!':
+        if (match(tokenizer, '=')) add_token(tokenizer, SCRIPT_TOKEN_BANG_EQUAL);
+        else add_diagnostic(tokenizer, "unexpected character");
+        break;
+    case '<':
+        add_token(tokenizer, match(tokenizer, '=') ? SCRIPT_TOKEN_LESS_EQUAL : SCRIPT_TOKEN_LESS);
+        break;
+    case '>':
+        add_token(tokenizer, match(tokenizer, '=') ? SCRIPT_TOKEN_GREATER_EQUAL : SCRIPT_TOKEN_GREATER);
+        break;
     case '"':
         scan_string(tokenizer);
         break;
@@ -296,6 +306,11 @@ const char *script_token_type_name(ScriptTokenType type) {
     case SCRIPT_TOKEN_COLON: return ":";
     case SCRIPT_TOKEN_EQUAL: return "=";
     case SCRIPT_TOKEN_EQUAL_EQUAL: return "==";
+    case SCRIPT_TOKEN_BANG_EQUAL: return "!=";
+    case SCRIPT_TOKEN_LESS: return "<";
+    case SCRIPT_TOKEN_LESS_EQUAL: return "<=";
+    case SCRIPT_TOKEN_GREATER: return ">";
+    case SCRIPT_TOKEN_GREATER_EQUAL: return ">=";
     case SCRIPT_TOKEN_KEYWORD_ROOM: return "room";
     case SCRIPT_TOKEN_KEYWORD_OBJECT: return "object";
     case SCRIPT_TOKEN_KEYWORD_HOTSPOT: return "hotspot";
