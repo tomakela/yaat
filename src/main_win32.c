@@ -57,9 +57,6 @@ typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char p
 static YaatBitmap g_background_bitmap;
 static YaatBitmap g_player_bitmap;
 
-static void yaat_runtime_join_path(char *dst, size_t dst_size, const char *left, const char *right);
-static int yaat_clamp_int(int value, int minimum, int maximum) { if (value < minimum) return minimum; if (value > maximum) return maximum; return value; }
-static void yaat_copy(char *dst, size_t dst_size, const char *src, size_t len) { if (dst_size == 0) return; if (len >= dst_size) len = dst_size - 1; memcpy(dst, src, len); dst[len] = '\0'; }
 static void yaat_runtime_join_path(char *dst, size_t dst_size,
                                    const char *left, const char *right);
 static const char *yaat_runtime_logical_path(const char *path);

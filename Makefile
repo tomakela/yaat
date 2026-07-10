@@ -29,12 +29,10 @@ ENGINE_RUNTIME_SOURCES = \
 	src/third_party/miniz/miniz.c \
 	src/third_party/miniz/miniz_zip.c \
 	src/third_party/miniz/miniz_tinfl.c
-	src/runtime/asset_store.c
 
 SOURCES = $(WIN32_SOURCES) $(ENGINE_RUNTIME_SOURCES)
 
-.PHONY: all clean print-sources yaatc fixtures
-.PHONY: all clean print-sources asset-store-smoke
+.PHONY: all clean print-sources yaatc fixtures asset-store-smoke
 
 all: $(EXE)
 
@@ -47,7 +45,6 @@ print-sources:
 
 clean:
 	rm -rf $(BUILD_DIR)
-
 
 YAATC = $(BUILD_DIR)/yaatc
 YAATC_SOURCES = tools/yaatc/main.c src/script_tokenizer.c src/script_parser.c src/script_package.c src/script_bytecode.c
