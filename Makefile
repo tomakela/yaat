@@ -25,7 +25,7 @@ ENGINE_RUNTIME_SOURCES = \
 
 SOURCES = $(WIN32_SOURCES) $(ENGINE_RUNTIME_SOURCES)
 
-.PHONY: all clean print-sources
+.PHONY: all clean print-sources asset-store-smoke
 
 all: $(EXE)
 
@@ -38,3 +38,10 @@ print-sources:
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+asset-store-smoke: $(BUILD_DIR)/asset_store_smoke
+	./$(BUILD_DIR)/asset_store_smoke
+
+$(BUILD_DIR)/asset_store_smoke: tests/asset_store/asset_store_smoke.c src/runtime/asset_store.c src/runtime/asset_store.h
+	mkdir -p $(BUILD_DIR)
+	$(CC) -std=c89 -Wall -Wextra -pedantic -Isrc -o $@ tests/asset_store/asset_store_smoke.c src/runtime/asset_store.c

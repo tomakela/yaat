@@ -302,3 +302,15 @@ Development builds should load loose files first because they are easier to insp
 - Use forward slashes in data files if the engine normalizes them, or document backslashes consistently.
 - Keep individual files small enough for old machines; split oversized speech or animation assets.
 - Validate the final asset tree on a clean Windows 95-compatible runtime target or emulator before release.
+
+### Packed archive lookup and path policy
+
+The runtime asset store resolves a logical asset path in this order:
+
+1. Loose files under `game/`.
+2. Patch archives from highest supported patch number to lowest, currently `patch0001.dat` then `patch0000.dat`.
+3. The base `game.dat` archive.
+
+Archive entries use normalized logical paths with `/` separators. The loader rejects absolute paths, drive-qualified paths such as `C:\x`, and any `..` segment after slash normalization. Backslashes in safe relative paths are normalized to `/` before lookup.
+
+If an archive contains duplicate entries for the same normalized logical path, the last entry in that archive wins. This mirrors patch layering inside a single archive and keeps packer output deterministic when a later entry intentionally replaces an earlier one.
