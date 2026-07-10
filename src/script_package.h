@@ -16,8 +16,11 @@ typedef enum YaatCommandKind { YAAT_CMD_SAY, YAAT_CMD_SET, YAAT_CMD_GOTO, YAAT_C
 typedef struct YaatEvent { char name[32]; char item[32]; int first_command; int command_count; } YaatEvent;
 typedef struct YaatEntity { YaatEntityKind kind; char id[32]; char name[64]; int x; int y; int w; int h; int visible; YaatEvent events[YAAT_MAX_EVENTS]; int event_count; } YaatEntity;
 typedef struct YaatRoom { char id[32]; char label[64]; unsigned long color; YaatEntity entities[YAAT_MAX_ENTITIES]; int entity_count; YaatEvent events[YAAT_MAX_EVENTS]; int event_count; } YaatRoom;
-typedef struct YaatCommand { YaatCommandKind kind; char a[96]; char b[96]; int bool_value; int int_value; int first_child; int child_count; int first_else_child; int else_child_count; } YaatCommand;
-typedef struct YaatVar { char name[32]; int bool_value; } YaatVar;
+typedef enum YaatValueKind { YAAT_VALUE_BOOL, YAAT_VALUE_INT, YAAT_VALUE_STRING } YaatValueKind;
+typedef enum YaatConditionOp { YAAT_COND_TRUTHY, YAAT_COND_EQ, YAAT_COND_NE, YAAT_COND_LT, YAAT_COND_LTE, YAAT_COND_GT, YAAT_COND_GTE } YaatConditionOp;
+typedef struct YaatValue { YaatValueKind kind; int bool_value; int int_value; char string_value[96]; } YaatValue;
+typedef struct YaatCommand { YaatCommandKind kind; char a[96]; char b[96]; int bool_value; int int_value; YaatValue value; YaatConditionOp condition_op; int first_child; int child_count; int first_else_child; int else_child_count; } YaatCommand;
+typedef struct YaatVar { char name[32]; YaatValue value; } YaatVar;
 
 typedef struct YaatScriptPackage {
     YaatRoom rooms[YAAT_MAX_ROOMS]; int room_count;
@@ -27,5 +30,9 @@ typedef struct YaatScriptPackage {
 
 void yaat_script_package_init(YaatScriptPackage *package);
 int yaat_script_package_set_var(YaatScriptPackage *package, const char *name, int bool_value);
+int yaat_script_package_set_var_value(YaatScriptPackage *package, const char *name, const YaatValue *value);
+YaatValue yaat_value_bool(int value);
+YaatValue yaat_value_int(int value);
+YaatValue yaat_value_string(const char *value);
 
 #endif

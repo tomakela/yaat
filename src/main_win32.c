@@ -1322,20 +1322,52 @@ static int yaat_find_var(const char *name)
     return -1;
 }
 
-static int yaat_get_var(const char *name)
+static YaatValue yaat_get_var(const char *name)
 {
     int idx = yaat_find_var(name);
-    if (idx < 0) return 0;
-    return g_vars[idx].bool_value;
+    if (idx < 0) return yaat_value_bool(0);
+    return g_vars[idx].value;
 }
-static void yaat_set_var(const char *name, int value)
+
+static int yaat_value_truthy(const YaatValue *value)
+{
+    if (!value) return 0;
+    if (value->kind == YAAT_VALUE_BOOL) return value->bool_value != 0;
+    if (value->kind == YAAT_VALUE_INT) return value->int_value != 0;
+    return value->string_value[0] != '\0';
+}
+
+static int yaat_compare_values(const YaatValue *left, YaatConditionOp op, const YaatValue *right)
+{
+    int cmp = 0;
+    if (op == YAAT_COND_TRUTHY) return yaat_value_truthy(left);
+    if (!left || !right) return 0;
+    if (left->kind == YAAT_VALUE_INT && right->kind == YAAT_VALUE_INT) {
+        if (left->int_value < right->int_value) cmp = -1;
+        else if (left->int_value > right->int_value) cmp = 1;
+    } else if (left->kind == YAAT_VALUE_BOOL && right->kind == YAAT_VALUE_BOOL) {
+        if (left->bool_value < right->bool_value) cmp = -1;
+        else if (left->bool_value > right->bool_value) cmp = 1;
+    } else {
+        cmp = strcmp(left->string_value, right->string_value);
+    }
+    if (op == YAAT_COND_EQ) return cmp == 0;
+    if (op == YAAT_COND_NE) return cmp != 0;
+    if (op == YAAT_COND_LT) return cmp < 0;
+    if (op == YAAT_COND_LTE) return cmp <= 0;
+    if (op == YAAT_COND_GT) return cmp > 0;
+    if (op == YAAT_COND_GTE) return cmp >= 0;
+    return 0;
+}
+
+static void yaat_set_var_value(const char *name, const YaatValue *value)
 {
     int idx = yaat_find_var(name);
     if (idx < 0 && g_var_count < YAAT_MAX_VARS) {
         idx = g_var_count++;
         yaat_copy(g_vars[idx].name, sizeof(g_vars[idx].name), name, strlen(name));
     }
-    if (idx >= 0) g_vars[idx].bool_value = value;
+    if (idx >= 0 && value) g_vars[idx].value = *value;
 }
 
 static int yaat_has_inventory(const char *item)
@@ -1398,7 +1430,7 @@ static void yaat_execute_commands(int first, int count)
             yaat_copy(g_dialogue_text, sizeof(g_dialogue_text), cmd->b, strlen(cmd->b));
             g_dialogue_visible = 1;
         } else if (cmd->kind == YAAT_CMD_SET) {
-            yaat_set_var(cmd->a, cmd->bool_value);
+            yaat_set_var_value(cmd->a, &cmd->value);
         } else if (cmd->kind == YAAT_CMD_GOTO) {
             int idx = yaat_room_index_by_id(cmd->a);
             if (idx >= 0) yaat_enter_room(idx);
@@ -1410,7 +1442,8 @@ static void yaat_execute_commands(int first, int count)
             YaatEntity *entity = yaat_entity_by_id(&g_rooms[g_current_room], cmd->a);
             if (entity) entity->visible = 0;
         } else if (cmd->kind == YAAT_CMD_IF) {
-            if (yaat_get_var(cmd->a)) yaat_execute_commands(cmd->first_child, cmd->child_count);
+            YaatValue value = yaat_get_var(cmd->a);
+            if (yaat_compare_values(&value, cmd->condition_op, &cmd->value)) yaat_execute_commands(cmd->first_child, cmd->child_count);
             else yaat_execute_commands(cmd->first_else_child, cmd->else_child_count);
         } else if (cmd->kind == YAAT_CMD_SHAKE) {
             yaat_start_shake(cmd->bool_value, cmd->int_value);
@@ -1458,7 +1491,7 @@ static void yaat_import_package(YaatScriptPackage *package)
     int j;
     int command_base = g_command_count;
     if (!package) return;
-    for (i = 0; i < package->var_count; ++i) yaat_set_var(package->vars[i].name, package->vars[i].bool_value);
+    for (i = 0; i < package->var_count; ++i) yaat_set_var_value(package->vars[i].name, &package->vars[i].value);
     for (i = 0; i < package->command_count && g_command_count < YAAT_MAX_COMMANDS; ++i) {
         YaatCommand command = package->commands[i];
         if (command.child_count > 0) command.first_child += command_base;
