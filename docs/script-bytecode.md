@@ -1,6 +1,6 @@
 # YAAT script bytecode package (`.yaatbc`)
 
-YAAT bytecode is an offline-compiled package for Win95-era ANSI C loaders. Version 1 is intentionally simple: fixed-size records, little-endian integers, no pointer-sized fields, and no required unaligned integer reads.
+YAAT bytecode is an offline-compiled package for Win95-era ANSI C loaders. Version 2 is intentionally simple: fixed-size records, little-endian integers, no pointer-sized fields, and no required unaligned integer reads.
 
 ## Header
 
@@ -16,7 +16,7 @@ YAAT bytecode is an offline-compiled package for Win95-era ANSI C loaders. Versi
 
 ## String table and strings
 
-Version 1 stores strings inline as fixed-width NUL-terminated byte arrays rather than a separate offset table. Loaders must clamp the final byte to `NUL` after reading. Future versions may add a string table section while preserving the header magic/version gate.
+Version 2 stores strings inline as fixed-width NUL-terminated byte arrays rather than a separate offset table. Loaders must clamp the final byte to `NUL` after reading. Future versions may add a string table section while preserving the header magic/version gate.
 
 ## Records
 
@@ -30,11 +30,11 @@ Records are serialized in this order: variables, commands, rooms. Room records c
 
 ## Command opcodes
 
-Serialized opcodes map deterministically to runtime command kinds: `0=YAAT_CMD_SAY`, `1=YAAT_CMD_SET`, `2=YAAT_CMD_GOTO`, `3=YAAT_CMD_PLAY_SOUND`, `4=YAAT_CMD_TAKE`, `5=YAAT_CMD_HIDE`, `6=YAAT_CMD_IF`.
+Serialized opcodes map deterministically to runtime command kinds: `0=YAAT_CMD_SAY`, `1=YAAT_CMD_SET`, `2=YAAT_CMD_GOTO`, `3=YAAT_CMD_PLAY_SOUND`, `4=YAAT_CMD_TAKE`, `5=YAAT_CMD_HIDE`, `6=YAAT_CMD_IF`, `7=YAAT_CMD_SHAKE`.
 
 ## Values
 
-Version 1 value encoding is command-specific: booleans are `u16` `0` or `1`; identifiers, asset paths, speakers, and dialogue text are inline strings. `YAAT_CMD_IF` uses `a` as the variable name and child command ranges for branches.
+Version 2 value encoding is command-specific: booleans are `u16` `0` or `1`; identifiers, asset paths, speakers, and dialogue text are inline strings. `YAAT_CMD_IF` uses `a` as the variable name and child command ranges for branches. `YAAT_CMD_SHAKE` stores the duration in `bool_value` and the magnitude in `int_value`.
 
 ## Endian and alignment
 

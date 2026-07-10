@@ -300,11 +300,37 @@ on use brass_key {
 
 Event meaning:
 
-- `on look`: runs when the player examines the object or hotspot.
-- `on use`: runs when the player uses the object or hotspot without a selected inventory item.
-- `on use <item>`: runs when the player uses a specific inventory item on the object or hotspot.
-- `on talk`: runs when the player tries to talk to the object or hotspot.
-- `on click`: runs for a generic click or default interaction.
+- `on look`: runs when the player selects the `look` verb and clicks the object, hotspot, or inventory item.
+- `on use`: runs when the player selects the `use` verb and clicks the object or hotspot without a selected inventory item.
+- `on use <item>`: runs when the player selects the `use` verb, selects an inventory item, and then clicks the object or hotspot.
+- `on talk`: runs when the player selects the `talk` verb and clicks the object or hotspot.
+- `on take`: runs when the player selects the `take` verb and clicks the object or hotspot.
+- `on open`: runs when the player selects the `open` verb and clicks the object or hotspot.
+- `on close`: runs when the player selects the `close` verb and clicks the object or hotspot.
+- `on click`: runs for a generic click or as the default fallback when the clicked target does not define the selected verb event.
+
+## Verb selection and dispatch
+
+The Win32 runtime exposes a small verb menu. The default verb list is configurable in `game/actions.ini` and currently contains:
+
+```ini
+[verbs]
+verb0=look
+verb1=use
+verb2=talk
+verb3=take
+verb4=open
+verb5=close
+```
+
+Runtime dispatch uses this order:
+
+1. If the click is in the verb menu, the runtime updates the selected verb and does not dispatch a script event.
+2. If the click is on an inventory item while `use` is selected, the runtime stores that inventory item as the selected item.
+3. If the click is on a room object or hotspot, the runtime first looks for `on <selected-verb>`.
+4. If `use` has a selected inventory item, the runtime first looks for `on use <item>` before trying plain `on use`.
+5. If the selected verb handler is missing, the runtime falls back to `on click`.
+6. If no matching event exists, no commands run.
 
 ## Built-in commands
 
@@ -425,6 +451,22 @@ Example:
 
 ```text
 play_sound "assets/sounds/unlock.wav"
+```
+
+### shake
+
+Temporarily shake the in-room camera/render layer. The dialogue and UI layer remains steady.
+
+```text
+shake <duration_ms> <magnitude>
+```
+
+`duration_ms` is clamped by the runtime to a safe maximum and `magnitude` is clamped to keep offsets inside the backbuffer.
+
+Example:
+
+```text
+shake 350 6
 ```
 
 ## Control flow
