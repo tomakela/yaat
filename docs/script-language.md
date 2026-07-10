@@ -529,6 +529,32 @@ if door_locked {
 
 This is equivalent to checking `door_locked == true`.
 
+### Inventory conditions
+
+The parser and Win32 runtime also support a special inventory condition form:
+
+```text
+if has <item> {
+  ...
+}
+```
+
+This condition is true when `<item>` is currently in the player's inventory. The keyword `inventory` is accepted as an alias for `has`.
+
+Examples:
+
+```text
+if has brass_key {
+  say player "I have the key."
+}
+
+if inventory lantern {
+  say player "The lantern should help."
+} else {
+  say player "I need a light source first."
+}
+```
+
 ### Equality checks
 
 Simple comparisons compare a variable to a value:
