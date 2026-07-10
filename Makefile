@@ -17,7 +17,10 @@ WATCOM_LIBS = user32.lib gdi32.lib
 WIN32_SOURCES = \
 	src/main_win32.c \
 	src/platform/win32/gdi_renderer.c \
-	src/script_tokenizer.c
+	src/script_tokenizer.c \
+	src/script_parser.c \
+	src/script_package.c \
+	src/script_bytecode.c
 
 # Keep this runtime source list in sync with scripts/build_engine_*.bat and docs/toolchain-compatibility.md.
 ENGINE_RUNTIME_SOURCES = \
@@ -30,6 +33,7 @@ ENGINE_RUNTIME_SOURCES = \
 
 SOURCES = $(WIN32_SOURCES) $(ENGINE_RUNTIME_SOURCES)
 
+.PHONY: all clean print-sources yaatc fixtures
 .PHONY: all clean print-sources asset-store-smoke
 
 all: $(EXE)
@@ -44,6 +48,18 @@ print-sources:
 clean:
 	rm -rf $(BUILD_DIR)
 
+
+YAATC = $(BUILD_DIR)/yaatc
+YAATC_SOURCES = tools/yaatc/main.c src/script_tokenizer.c src/script_parser.c src/script_package.c src/script_bytecode.c
+
+yaatc: $(YAATC)
+
+$(YAATC): $(YAATC_SOURCES)
+	mkdir -p $(BUILD_DIR)
+	$(CC) -std=c89 -Wall -Wextra -Isrc -o $@ $(YAATC_SOURCES)
+
+fixtures: $(YAATC)
+	$(YAATC) tests/fixtures/scripts/two_room_key_puzzle.yaat tests/fixtures/bytecode/two_room_key_puzzle.yaatbc
 asset-store-smoke: $(BUILD_DIR)/asset_store_smoke
 	./$(BUILD_DIR)/asset_store_smoke
 

@@ -1,7 +1,8 @@
 #include <windows.h>
 
 #include "platform/win32/gdi_renderer.h"
-#include "script_tokenizer.h"
+#include "script_parser.h"
+#include "script_bytecode.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,78 +22,6 @@
 #define YAAT_PLAYER_SPEED_PIXELS 4
 #define YAAT_FRAME_TIMER_ID 1
 #define YAAT_FRAME_TIMER_MS 16
-#define YAAT_MAX_ROOMS 8
-#define YAAT_MAX_ENTITIES 32
-#define YAAT_MAX_EVENTS 8
-#define YAAT_MAX_COMMANDS 64
-#define YAAT_MAX_VARS 64
-#define YAAT_MAX_INVENTORY 16
-#define YAAT_TEXT_MAX 160
-#define YAAT_MAX_RUNTIME_HOTSPOTS 32
-
-typedef struct YaatViewport {
-    int x;
-    int y;
-    int width;
-    int height;
-} YaatViewport;
-
-typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT } YaatEntityKind;
-typedef enum YaatCommandKind { YAAT_CMD_SAY, YAAT_CMD_SET, YAAT_CMD_GOTO, YAAT_CMD_PLAY_SOUND, YAAT_CMD_TAKE, YAAT_CMD_HIDE, YAAT_CMD_IF } YaatCommandKind;
-
-typedef struct YaatCommand YaatCommand;
-
-typedef struct YaatEvent {
-    char name[32];
-    char item[32];
-    int first_command;
-    int command_count;
-} YaatEvent;
-
-typedef struct YaatEntity {
-    YaatEntityKind kind;
-    char id[32];
-    char name[64];
-    int x;
-    int y;
-    int w;
-    int h;
-    int visible;
-    YaatEvent events[YAAT_MAX_EVENTS];
-    int event_count;
-} YaatEntity;
-
-typedef struct YaatRoom {
-    char id[32];
-    char label[64];
-    unsigned long color;
-    YaatEntity entities[YAAT_MAX_ENTITIES];
-    int entity_count;
-    YaatEvent events[YAAT_MAX_EVENTS];
-    int event_count;
-} YaatRoom;
-
-struct YaatCommand {
-    YaatCommandKind kind;
-    char a[96];
-    char b[96];
-    int bool_value;
-    int first_child;
-    int child_count;
-    int first_else_child;
-    int else_child_count;
-};
-
-typedef struct YaatVar {
-    char name[32];
-    int bool_value;
-} YaatVar;
-
-typedef struct YaatScriptCursor {
-    ScriptToken *tokens;
-    size_t count;
-    size_t index;
-} YaatScriptCursor;
 
 static YaatGdiRenderer g_renderer;
 static int g_renderer_ready;
@@ -124,16 +53,13 @@ static int g_fullscreen;
 static RECT g_windowed_rect;
 static DWORD g_windowed_style;
 
-typedef struct YaatBitmap {
-    unsigned long *pixels;
-    int width;
-    int height;
-    char path[YAAT_ASSET_MAX_PATH * 2];
-} YaatBitmap;
-
+typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
 static YaatBitmap g_background_bitmap;
 static YaatBitmap g_player_bitmap;
 
+static void yaat_runtime_join_path(char *dst, size_t dst_size, const char *left, const char *right);
+static int yaat_clamp_int(int value, int minimum, int maximum) { if (value < minimum) return minimum; if (value > maximum) return maximum; return value; }
+static void yaat_copy(char *dst, size_t dst_size, const char *src, size_t len) { if (dst_size == 0) return; if (len >= dst_size) len = dst_size - 1; memcpy(dst, src, len); dst[len] = '\0'; }
 static void yaat_runtime_join_path(char *dst, size_t dst_size,
                                    const char *left, const char *right);
 static const char *yaat_runtime_logical_path(const char *path);
@@ -844,82 +770,40 @@ static void yaat_enter_room(int room_index)
     yaat_execute_event(enter_event);
 }
 
-static int yaat_parse_commands(YaatScriptCursor *cursor);
-
-static void yaat_parse_event(YaatScriptCursor *cursor, YaatEvent *events, int *event_count)
+static void yaat_offset_events(YaatEvent *events, int count, int command_base)
 {
-    YaatEvent *event;
-    ScriptToken *token;
-    if (*event_count >= YAAT_MAX_EVENTS) return;
-    event = &events[(*event_count)++];
-    memset(event, 0, sizeof(*event));
-    token = yaat_advance_token(cursor);
-    yaat_copy(event->name, sizeof(event->name), token->lexeme, token->length);
-    if (yaat_peek(cursor)->type == SCRIPT_TOKEN_IDENTIFIER && !yaat_token_is(yaat_peek(cursor), "on")) {
-        token = yaat_advance_token(cursor);
-        yaat_copy(event->item, sizeof(event->item), token->lexeme, token->length);
+    int i;
+    for (i = 0; i < count; ++i) events[i].first_command += command_base;
+}
+
+static void yaat_import_package(YaatScriptPackage *package)
+{
+    int i;
+    int j;
+    int command_base = g_command_count;
+    if (!package) return;
+    for (i = 0; i < package->var_count; ++i) yaat_set_var(package->vars[i].name, package->vars[i].bool_value);
+    for (i = 0; i < package->command_count && g_command_count < YAAT_MAX_COMMANDS; ++i) {
+        YaatCommand command = package->commands[i];
+        if (command.child_count > 0) command.first_child += command_base;
+        if (command.else_child_count > 0) command.first_else_child += command_base;
+        g_commands[g_command_count++] = command;
     }
-    if (yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) {
-        event->first_command = g_command_count;
-        event->command_count = yaat_parse_commands(cursor);
+    for (i = 0; i < package->room_count && g_room_count < YAAT_MAX_ROOMS; ++i) {
+        YaatRoom room = package->rooms[i];
+        yaat_offset_events(room.events, room.event_count, command_base);
+        for (j = 0; j < room.entity_count; ++j) yaat_offset_events(room.entities[j].events, room.entities[j].event_count, command_base);
+        g_rooms[g_room_count++] = room;
     }
 }
 
-static int yaat_parse_commands(YaatScriptCursor *cursor)
+static void yaat_load_script_package(const char *bytecode_path, const char *source_path)
 {
-    int first = g_command_count;
-    while (yaat_peek(cursor)->type != SCRIPT_TOKEN_RIGHT_BRACE && yaat_peek(cursor)->type != SCRIPT_TOKEN_EOF) {
-        ScriptToken *token = yaat_advance_token(cursor);
-        YaatCommand *cmd;
-        if (g_command_count >= YAAT_MAX_COMMANDS) break;
-        cmd = &g_commands[g_command_count++];
-        memset(cmd, 0, sizeof(*cmd));
-        if (token->type == SCRIPT_TOKEN_KEYWORD_IF) {
-            ScriptToken *cond = yaat_advance_token(cursor);
-            cmd->kind = YAAT_CMD_IF;
-            yaat_copy(cmd->a, sizeof(cmd->a), cond->lexeme, cond->length);
-            if (yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) { cmd->first_child = g_command_count; cmd->child_count = yaat_parse_commands(cursor); }
-            if (yaat_match_token(cursor, SCRIPT_TOKEN_KEYWORD_ELSE) && yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) { cmd->first_else_child = g_command_count; cmd->else_child_count = yaat_parse_commands(cursor); }
-        } else if (yaat_token_is(token, "say")) {
-            ScriptToken *speaker = yaat_advance_token(cursor);
-            ScriptToken *text = yaat_advance_token(cursor);
-            cmd->kind = YAAT_CMD_SAY;
-            yaat_copy(cmd->a, sizeof(cmd->a), speaker->lexeme, speaker->length);
-            yaat_copy(cmd->b, sizeof(cmd->b), text->lexeme, text->length);
-        } else if (yaat_token_is(token, "set")) {
-            ScriptToken *name = yaat_advance_token(cursor);
-            yaat_match_token(cursor, SCRIPT_TOKEN_EQUAL);
-            token = yaat_advance_token(cursor);
-            cmd->kind = YAAT_CMD_SET;
-            yaat_copy(cmd->a, sizeof(cmd->a), name->lexeme, name->length);
-            cmd->bool_value = token->type == SCRIPT_TOKEN_KEYWORD_TRUE;
-        } else if (yaat_token_is(token, "goto")) {
-            token = yaat_advance_token(cursor);
-            cmd->kind = YAAT_CMD_GOTO;
-            yaat_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
-        } else if (yaat_token_is(token, "play_sound")) {
-            token = yaat_advance_token(cursor);
-            cmd->kind = YAAT_CMD_PLAY_SOUND;
-            yaat_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
-        } else if (yaat_token_is(token, "take")) {
-            token = yaat_advance_token(cursor);
-            cmd->kind = YAAT_CMD_TAKE;
-            yaat_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
-        } else if (yaat_token_is(token, "hide")) {
-            token = yaat_advance_token(cursor);
-            cmd->kind = YAAT_CMD_HIDE;
-            yaat_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
-        } else {
-            g_command_count--;
-            if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
-        }
+    YaatScriptPackage package;
+    yaat_script_package_init(&package);
+    if (yaat_bytecode_read_file(bytecode_path, &package) || yaat_parse_script_file_into(&package, source_path)) {
+        yaat_import_package(&package);
     }
-    yaat_match_token(cursor, SCRIPT_TOKEN_RIGHT_BRACE);
-    return g_command_count - first;
-}
-
-static void yaat_parse_entity(YaatScriptCursor *cursor, YaatRoom *room, YaatEntityKind kind)
-{
     YaatEntity *entity;
     ScriptToken *token;
     if (room->entity_count >= YAAT_MAX_ENTITIES) return;
@@ -1001,6 +885,10 @@ static void yaat_load_script_file(const char *path)
 
 static void yaat_load_demo(void)
 {
+    yaat_load_script_package("game/scripts/startup.yaatbc", "game/scripts/startup.yaat");
+    yaat_load_script_package("game/rooms/room000_start/script.yaatbc", "game/rooms/room000_start/script.yaat");
+    yaat_load_script_package("game/rooms/room001_intro/script.yaatbc", "game/rooms/room001_intro/script.yaat");
+    yaat_load_script_package("game/rooms/room002_exit/script.yaatbc", "game/rooms/room002_exit/script.yaat");
     yaat_load_script_file("scripts/startup.yaat");
     yaat_load_script_file("rooms/room000_start/script.yaat");
     yaat_load_script_file("rooms/room001_intro/script.yaat");
