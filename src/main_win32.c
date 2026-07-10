@@ -434,26 +434,25 @@ static void yaat_draw_player_placeholder(void)
 
 static void yaat_draw_player(void)
 {
-    char path[YAAT_ASSET_MAX_PATH * 2];
-    const char *sprite_name;
+    const char *sprite_path;
     int draw_x;
     int draw_y;
 
+    sprite_path = g_runtime_load.player.idle;
     if (g_player_x != g_target_x || g_player_y != g_target_y) {
         if (g_target_x < g_player_x) {
-            sprite_name = "player_walk_left.bmp";
+            sprite_path = g_runtime_load.player.walk_left;
         } else if (g_target_x > g_player_x) {
-            sprite_name = "player_walk_right.bmp";
+            sprite_path = g_runtime_load.player.walk_right;
         } else {
-            sprite_name = g_player_facing_right ?
-                          "player_walk_right.bmp" : "player_walk_left.bmp";
+            sprite_path = g_player_facing_right ?
+                          g_runtime_load.player.walk_right :
+                          g_runtime_load.player.walk_left;
         }
-    } else {
-        sprite_name = "player_idle.bmp";
     }
-    yaat_runtime_join_path(path, sizeof(path), "graphics/sprites",
-                           sprite_name);
-    if (!yaat_load_bmp(&g_player_bitmap, path)) {
+
+    if (sprite_path == 0 || sprite_path[0] == '\0' ||
+        !yaat_load_bmp(&g_player_bitmap, sprite_path)) {
         yaat_draw_player_placeholder();
         return;
     }
