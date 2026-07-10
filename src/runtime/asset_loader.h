@@ -7,6 +7,8 @@
 #define YAAT_ASSET_MAX_NAME 64
 #define YAAT_ASSET_MAX_OBJECTS 32
 #define YAAT_ASSET_MAX_HOTSPOTS 32
+#define YAAT_ASSET_MAX_ANIMATIONS 8
+#define YAAT_ASSET_MAX_ANIMATION_FRAMES 8
 
 typedef struct YaatAssetBuffer {
     unsigned char *data;
@@ -38,7 +40,15 @@ typedef struct YaatRuntimeObject {
     int height;
     int visible;
     YaatTransparency transparency;
+    int transparent_color_enabled;
+    unsigned long transparent_color;
 } YaatRuntimeObject;
+
+typedef struct YaatRuntimePlayer {
+    char idle[YAAT_ASSET_MAX_PATH];
+    char walk_left[YAAT_ASSET_MAX_PATH];
+    char walk_right[YAAT_ASSET_MAX_PATH];
+} YaatRuntimePlayer;
 
 typedef struct YaatRuntimeHotspot {
     char id[YAAT_ASSET_MAX_NAME];
@@ -50,6 +60,28 @@ typedef struct YaatRuntimeHotspot {
     int width;
     int height;
 } YaatRuntimeHotspot;
+
+typedef struct YaatAnimationFrame {
+    char path[YAAT_ASSET_MAX_PATH];
+    int x;
+    int y;
+    int width;
+    int height;
+    int duration_ms;
+} YaatAnimationFrame;
+
+typedef struct YaatAnimationClip {
+    char id[YAAT_ASSET_MAX_NAME];
+    int frame_count;
+    int loop;
+    int default_frame_ms;
+    YaatAnimationFrame frames[YAAT_ASSET_MAX_ANIMATION_FRAMES];
+} YaatAnimationClip;
+
+typedef struct YaatRuntimePlayer {
+    int animation_count;
+    YaatAnimationClip animations[YAAT_ASSET_MAX_ANIMATIONS];
+} YaatRuntimePlayer;
 
 typedef struct YaatRuntimeRoom {
     char id[YAAT_ASSET_MAX_NAME];
@@ -67,7 +99,9 @@ typedef struct YaatRuntimeRoom {
 typedef struct YaatRuntimeLoadResult {
     int ok;
     char error[160];
+    YaatRuntimePlayer player;
     YaatRuntimeRoom room;
+    YaatRuntimePlayer player;
 } YaatRuntimeLoadResult;
 
 typedef struct YaatAssetStore {
