@@ -11,7 +11,19 @@
 #define YAAT_MAX_RUNTIME_HOTSPOTS 32
 
 typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT } YaatEntityKind;
-typedef enum YaatCommandKind { YAAT_CMD_SAY, YAAT_CMD_SET, YAAT_CMD_GOTO, YAAT_CMD_PLAY_SOUND, YAAT_CMD_TAKE, YAAT_CMD_HIDE, YAAT_CMD_IF, YAAT_CMD_SHAKE } YaatCommandKind;
+typedef enum YaatCommandKind {
+    YAAT_CMD_SAY,
+    YAAT_CMD_SET,
+    YAAT_CMD_GOTO,
+    YAAT_CMD_PLAY_SOUND,
+    YAAT_CMD_TAKE,
+    YAAT_CMD_HIDE,
+    YAAT_CMD_IF,
+    YAAT_CMD_SHAKE,
+    YAAT_CMD_DROP,
+    YAAT_CMD_REMOVE_INVENTORY,
+    YAAT_CMD_CONSUME
+} YaatCommandKind;
 
 typedef struct YaatEvent { char name[32]; char item[32]; int first_command; int command_count; } YaatEvent;
 typedef struct YaatEntity { YaatEntityKind kind; char id[32]; char name[64]; int x; int y; int w; int h; int visible; YaatEvent events[YAAT_MAX_EVENTS]; int event_count; } YaatEntity;

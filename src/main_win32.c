@@ -1352,6 +1352,36 @@ static void yaat_take_inventory(const char *item)
     }
 }
 
+static void yaat_remove_inventory(const char *item)
+{
+    int i;
+    int found = -1;
+    if (item == 0 || item[0] == '\0') return;
+    for (i = 0; i < g_inventory_count; ++i) {
+        if (strcmp(g_inventory[i], item) == 0) {
+            found = i;
+            break;
+        }
+    }
+    if (found < 0) return;
+    for (i = found; i + 1 < g_inventory_count; ++i) {
+        yaat_copy(g_inventory[i], 32, g_inventory[i + 1], strlen(g_inventory[i + 1]));
+    }
+    if (g_inventory_count > 0) {
+        g_inventory_count--;
+        g_inventory[g_inventory_count][0] = '\0';
+    }
+    if (strcmp(g_selected_inventory, item) == 0) g_selected_inventory[0] = '\0';
+}
+
+static int yaat_eval_condition(const YaatCommand *cmd)
+{
+    if ((strcmp(cmd->a, "has") == 0 || strcmp(cmd->a, "inventory") == 0) && cmd->b[0] != '\0') {
+        return yaat_has_inventory(cmd->b);
+    }
+    return yaat_get_var(cmd->a);
+}
+
 static int yaat_room_index_by_id(const char *id)
 {
     int i;
@@ -1406,11 +1436,13 @@ static void yaat_execute_commands(int first, int count)
             MessageBeep(MB_OK);
         } else if (cmd->kind == YAAT_CMD_TAKE) {
             yaat_take_inventory(cmd->a);
+        } else if (cmd->kind == YAAT_CMD_DROP || cmd->kind == YAAT_CMD_REMOVE_INVENTORY || cmd->kind == YAAT_CMD_CONSUME) {
+            yaat_remove_inventory(cmd->a);
         } else if (cmd->kind == YAAT_CMD_HIDE) {
             YaatEntity *entity = yaat_entity_by_id(&g_rooms[g_current_room], cmd->a);
             if (entity) entity->visible = 0;
         } else if (cmd->kind == YAAT_CMD_IF) {
-            if (yaat_get_var(cmd->a)) yaat_execute_commands(cmd->first_child, cmd->child_count);
+            if (yaat_eval_condition(cmd)) yaat_execute_commands(cmd->first_child, cmd->child_count);
             else yaat_execute_commands(cmd->first_else_child, cmd->else_child_count);
         } else if (cmd->kind == YAAT_CMD_SHAKE) {
             yaat_start_shake(cmd->bool_value, cmd->int_value);

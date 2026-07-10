@@ -86,6 +86,10 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             ScriptToken *cond = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_IF;
             parser_copy(cmd->a, sizeof(cmd->a), cond->lexeme, cond->length);
+            if ((yaat_token_is(cond, "has") || yaat_token_is(cond, "inventory")) && yaat_peek(cursor)->type != SCRIPT_TOKEN_LEFT_BRACE) {
+                token = yaat_advance_token(cursor);
+                parser_copy(cmd->b, sizeof(cmd->b), token->lexeme, token->length);
+            }
             if (yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) { cmd->first_child = package->command_count; cmd->child_count = yaat_parse_commands(package, cursor); }
             if (yaat_match_token(cursor, SCRIPT_TOKEN_KEYWORD_ELSE) && yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) { cmd->first_else_child = package->command_count; cmd->else_child_count = yaat_parse_commands(package, cursor); }
         } else if (yaat_token_is(token, "say")) {
@@ -112,6 +116,18 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
         } else if (yaat_token_is(token, "take")) {
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_TAKE;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "drop")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_DROP;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "remove_inventory")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_REMOVE_INVENTORY;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "consume")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_CONSUME;
             parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
         } else if (yaat_token_is(token, "hide")) {
             token = yaat_advance_token(cursor);
