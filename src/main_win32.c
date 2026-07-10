@@ -87,6 +87,13 @@ static int yaat_clamp_int(int value, int minimum, int maximum)
     return value;
 }
 
+static double yaat_clamp_double(double value, double minimum, double maximum)
+{
+    if (value < minimum) return minimum;
+    if (value > maximum) return maximum;
+    return value;
+}
+
 static void yaat_copy(char *dst, size_t dst_size, const char *src, size_t len)
 {
     if (dst_size == 0) return;
@@ -529,6 +536,77 @@ static void yaat_draw_bitmap_region(YaatBitmap *bitmap, int dst_x, int dst_y,
     yaat_unload_bitmap(&mask_bitmap);
 }
 
+static void yaat_draw_bitmap_scaled(YaatBitmap *bitmap, int dst_x, int dst_y,
+                                    double scale)
+{
+    int scaled_width;
+    int scaled_height;
+    int copy_x0;
+    int copy_y0;
+    int copy_x1;
+    int copy_y1;
+    int y;
+
+    if (bitmap == 0 || bitmap->pixels == 0) {
+        return;
+    }
+
+    scale = yaat_clamp_double(scale, 0.10, 4.0);
+    scaled_width = (int)((bitmap->width * scale) + 0.5);
+    scaled_height = (int)((bitmap->height * scale) + 0.5);
+    if (scaled_width <= 0 || scaled_height <= 0) {
+        return;
+    }
+
+    copy_x0 = yaat_clamp_int(dst_x, 0, g_renderer.width);
+    copy_y0 = yaat_clamp_int(dst_y, 0, g_renderer.height);
+    copy_x1 = yaat_clamp_int(dst_x + scaled_width, 0, g_renderer.width);
+    copy_y1 = yaat_clamp_int(dst_y + scaled_height, 0, g_renderer.height);
+    if (copy_x0 >= copy_x1 || copy_y0 >= copy_y1) {
+        return;
+    }
+
+    {
+        int x;
+        int src_x;
+        int src_y;
+        unsigned long *dst_row;
+
+        for (y = copy_y0; y < copy_y1; ++y) {
+            src_y = (int)(((y - dst_y) * bitmap->height) / scaled_height);
+            if (src_y < 0) src_y = 0;
+            if (src_y >= bitmap->height) src_y = bitmap->height - 1;
+            dst_row = (unsigned long *)((unsigned char *)g_renderer.pixels +
+                                        (y * g_renderer.pitch));
+            for (x = copy_x0; x < copy_x1; ++x) {
+                src_x = (int)(((x - dst_x) * bitmap->width) / scaled_width);
+                if (src_x < 0) src_x = 0;
+                if (src_x >= bitmap->width) src_x = bitmap->width - 1;
+                dst_row[x] = bitmap->pixels[(src_y * bitmap->width) + src_x];
+            }
+        }
+    }
+}
+
+static double yaat_player_scale_for_y(int y)
+{
+    YaatRuntimeRoom *room;
+    double range;
+    double t;
+    double scale;
+
+    room = &g_runtime_load.room;
+    range = (double)(room->near_y - room->far_y);
+    if (range == 0.0) {
+        scale = room->near_scale;
+    } else {
+        t = ((double)y - (double)room->far_y) / range;
+        t = yaat_clamp_double(t, 0.0, 1.0);
+        scale = room->far_scale + ((room->near_scale - room->far_scale) * t);
+    }
+    return yaat_clamp_double(scale, 0.10, 4.0);
+}
+
 static int yaat_draw_runtime_background(void)
 {
     char path[YAAT_ASSET_MAX_PATH * 2];
@@ -733,6 +811,9 @@ static void yaat_draw_player(void)
     const char *sprite_path;
     int draw_x;
     int draw_y;
+    int scaled_width;
+    int scaled_height;
+    double scale;
     int frame_width;
     int frame_height;
 
@@ -775,6 +856,12 @@ static void yaat_draw_player(void)
         return;
     }
 
+    scale = yaat_player_scale_for_y(g_player_y);
+    scaled_width = (int)((g_player_bitmap.width * scale) + 0.5);
+    scaled_height = (int)((g_player_bitmap.height * scale) + 0.5);
+    draw_x = g_player_x - (scaled_width / 2);
+    draw_y = g_player_y - scaled_height;
+    yaat_draw_bitmap_scaled(&g_player_bitmap, draw_x, draw_y, scale);
     draw_x = g_player_x - (g_player_bitmap.width / 2);
     draw_y = g_player_y - g_player_bitmap.height;
     {
