@@ -291,7 +291,24 @@ Recommended contents:
 
 ## Optional packed release data
 
-Development builds should load loose files first because they are easier to inspect. Release builds may pack assets into `packed/game.dat` with a table of contents and fixed-width little-endian fields. Keep the loose folder structure as the canonical source, then generate packed output with an offline tool.
+Development builds should load loose files first because they are easier to inspect. Keep the loose folder structure as the canonical source, then generate packed output with an offline tool.
+
+Runtime asset lookup uses this final precedence order, from highest priority to lowest:
+
+1. `game/` loose files.
+2. The highest-numbered `patchNNNN.dat` archive in `packed/`.
+3. Lower-numbered `patchNNNN.dat` archives, descending by patch number.
+4. `packed/game.dat`.
+
+For example, if `packed/game.dat`, `packed/patch0001.dat`, and `packed/patch0007.dat` all contain the same asset and no loose `game/` file overrides it, the runtime loads the copy from `patch0007.dat`.
+
+Release `.dat` files are ZIP-compatible archives for the first runtime, with these restrictions:
+
+- Do not emit ZIP64 records initially.
+- Do not include encrypted entries.
+- Store forward-slash relative paths only; no absolute paths, drive letters, `..` segments, or backslashes.
+- Use ASCII entry names.
+- Keep paths below the existing YAAT runtime limits where possible; prefer paths under 120 characters and avoid spaces in runtime asset paths.
 
 ## Naming and Win95 compatibility notes
 
@@ -299,6 +316,6 @@ Development builds should load loose files first because they are easier to insp
 - Keep IDs stable once scripts or save files refer to them.
 - Prefer paths under 120 characters and avoid spaces in runtime asset paths.
 - Avoid relying on case-sensitive filenames.
-- Use forward slashes in data files if the engine normalizes them, or document backslashes consistently.
+- Use forward slashes in data files and archive entries; avoid backslashes in runtime asset paths.
 - Keep individual files small enough for old machines; split oversized speech or animation assets.
 - Validate the final asset tree on a clean Windows 95-compatible runtime target or emulator before release.

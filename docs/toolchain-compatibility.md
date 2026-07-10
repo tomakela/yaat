@@ -39,7 +39,7 @@ wlink ?
 
 ## Open Watcom C/C++ engine build
 
-The Open Watcom engine script compiles the Win32 shell, renderer, tokenizer, and runtime asset-loader scaffolding:
+The Open Watcom engine script compiles the Win32 shell, renderer, tokenizer, and runtime asset-loader scaffolding. Keep this source list in sync with `Makefile` and the fallback `scripts/build_engine_*.bat` commands whenever runtime source files are added:
 
 ```bat
 scripts\build_engine_openwatcom.bat
