@@ -44,6 +44,10 @@ typedef struct YaatRuntimeRoom {
     char room_path[YAAT_ASSET_MAX_PATH];
     int width;
     int height;
+    int near_y;
+    double near_scale;
+    int far_y;
+    double far_scale;
     int object_count;
     YaatRuntimeObject objects[YAAT_ASSET_MAX_OBJECTS];
     int hotspot_count;

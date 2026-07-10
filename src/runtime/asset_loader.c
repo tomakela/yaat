@@ -351,6 +351,10 @@ static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRunt
     section[0] = '\0';
     room->width = 320;
     room->height = 200;
+    room->near_y = 200;
+    room->near_scale = 1.0;
+    room->far_y = 0;
+    room->far_scale = 1.0;
 
     if (!yaat_asset_store_load(store, path, &buffer)) {
         yaat_format_asset_error_path(error_path, sizeof(error_path), path,
@@ -395,6 +399,14 @@ static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRunt
             room->height = atoi(yaat_trim(equals));
         } else if (strcmp(section, "display") == 0 && strcmp(text, "background") == 0) {
             yaat_copy_string(room->background, sizeof(room->background), yaat_trim(equals));
+        } else if (strcmp(section, "scale") == 0 && strcmp(text, "near_y") == 0) {
+            room->near_y = atoi(yaat_trim(equals));
+        } else if (strcmp(section, "scale") == 0 && strcmp(text, "near_scale") == 0) {
+            room->near_scale = atof(yaat_trim(equals));
+        } else if (strcmp(section, "scale") == 0 && strcmp(text, "far_y") == 0) {
+            room->far_y = atoi(yaat_trim(equals));
+        } else if (strcmp(section, "scale") == 0 && strcmp(text, "far_scale") == 0) {
+            room->far_scale = atof(yaat_trim(equals));
         }
     }
     yaat_asset_buffer_free(&buffer);
