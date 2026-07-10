@@ -26,6 +26,8 @@ typedef struct YaatRuntimeObject {
     int width;
     int height;
     int visible;
+    int transparent_color_enabled;
+    unsigned long transparent_color;
 } YaatRuntimeObject;
 
 typedef struct YaatRuntimePlayer {
