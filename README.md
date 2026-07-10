@@ -79,6 +79,17 @@ The make target writes `build/yaat.exe`. Override `WCL386`, `WATCOM_CFLAGS`, `WA
 
 For fallback compiler experiments and smoke-test commands, see [Toolchain compatibility](docs/toolchain-compatibility.md).
 
+## Runtime asset lookup and archives
+
+YAAT keeps the loose `game/` tree as the canonical development source. Runtime lookup must use this final precedence order, from highest priority to lowest:
+
+1. `game/` loose files.
+2. The highest-numbered `patchNNNN.dat` archive in `packed/`.
+3. Lower-numbered `patchNNNN.dat` archives, descending by patch number.
+4. `packed/game.dat`.
+
+Release `.dat` files are ZIP-compatible archives with YAAT restrictions for the first runtime: no ZIP64 records, no encrypted entries, forward-slash-only relative paths, ASCII entry names, and path lengths kept below the existing YAAT limits where possible. Prefer paths under 120 characters.
+
 ## Running the Win32 engine shell
 
 After building, run the generated executable on Windows:
