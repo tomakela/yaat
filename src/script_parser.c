@@ -209,6 +209,10 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_SHAKE;
             cmd->bool_value = atoi(duration->lexeme);
             cmd->int_value = atoi(magnitude->lexeme);
+        } else if (yaat_token_is(token, "call")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_CALL;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
         } else {
             package->command_count--;
             if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
@@ -289,6 +293,7 @@ int yaat_parse_script_text_into(YaatScriptPackage *package, const char *source)
                 yaat_script_package_set_var_value(package, var_name, &value);
             }
         } else if (token->type == SCRIPT_TOKEN_KEYWORD_ROOM) yaat_parse_room(package, &cursor);
+        else if (token->type == SCRIPT_TOKEN_KEYWORD_EVENT || yaat_token_is(token, "proc")) yaat_parse_event(package, &cursor, package->global_events, &package->global_event_count);
         else if (yaat_peek(&cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(&cursor); yaat_skip_block(&cursor); }
     }
     ok = result.diagnostics.count == 0;

@@ -4,13 +4,15 @@
 #define YAAT_MAX_ROOMS 8
 #define YAAT_MAX_ENTITIES 32
 #define YAAT_MAX_EVENTS 8
-#define YAAT_MAX_COMMANDS 64
+#define YAAT_MAX_GLOBAL_EVENTS 16
+#define YAAT_MAX_COMMANDS 128
 #define YAAT_MAX_VARS 64
 #define YAAT_MAX_INVENTORY 16
 #define YAAT_TEXT_MAX 160
 #define YAAT_MAX_RUNTIME_HOTSPOTS 32
 
 typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT } YaatEntityKind;
+typedef enum YaatCommandKind { YAAT_CMD_SAY, YAAT_CMD_SET, YAAT_CMD_GOTO, YAAT_CMD_PLAY_SOUND, YAAT_CMD_TAKE, YAAT_CMD_HIDE, YAAT_CMD_IF, YAAT_CMD_SHAKE, YAAT_CMD_CALL } YaatCommandKind;
 typedef enum YaatCommandKind { YAAT_CMD_SAY, YAAT_CMD_SET, YAAT_CMD_GOTO, YAAT_CMD_PLAY_SOUND, YAAT_CMD_TAKE, YAAT_CMD_HIDE, YAAT_CMD_IF, YAAT_CMD_SHAKE, YAAT_CMD_SHOW, YAAT_CMD_MOVE_OBJECT, YAAT_CMD_SET_OBJECT_SPRITE } YaatCommandKind;
 typedef enum YaatCommandKind {
     YAAT_CMD_SAY,
@@ -40,6 +42,7 @@ typedef struct YaatVar { char name[32]; YaatValue value; } YaatVar;
 typedef struct YaatScriptPackage {
     YaatRoom rooms[YAAT_MAX_ROOMS]; int room_count;
     YaatCommand commands[YAAT_MAX_COMMANDS]; int command_count;
+    YaatEvent global_events[YAAT_MAX_GLOBAL_EVENTS]; int global_event_count;
     YaatVar vars[YAAT_MAX_VARS]; int var_count;
 } YaatScriptPackage;
 

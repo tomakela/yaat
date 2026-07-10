@@ -109,6 +109,7 @@ static int rc(FILE *f, YaatCommand *c)
 
 static int valid_command(const YaatCommand *c, const YaatScriptPackage *p)
 {
+    if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_CALL) return 0;
     if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_SET_OBJECT_SPRITE) return 0;
     if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_DROP) return 0;
     if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_CONSUME) return 0;
@@ -134,9 +135,12 @@ int yaat_bytecode_write_file(const char *path, const YaatScriptPackage *p)
     w16(f, (unsigned)p->var_count);
     w16(f, (unsigned)p->room_count);
     w16(f, (unsigned)p->command_count);
+    w16(f, (unsigned)p->global_event_count);
+    for (i = 0; i < p->var_count; ++i) { ws(f, p->vars[i].name, 32); w16(f, (unsigned)p->vars[i].bool_value); }
     w16(f, 0);
     for (i = 0; i < p->var_count; ++i) { ws(f, p->vars[i].name, 32); wv(f, &p->vars[i].value); }
     for (i = 0; i < p->command_count; ++i) wc(f, &p->commands[i]);
+    for (i = 0; i < p->global_event_count; ++i) we(f, &p->global_events[i]);
     for (i = 0; i < p->room_count; ++i) {
         const YaatRoom *r = &p->rooms[i];
         ws(f, r->id, 32); ws(f, r->label, 64); w32(f, r->color);
@@ -158,7 +162,7 @@ int yaat_bytecode_read_file(const char *path, YaatScriptPackage *p)
 {
     FILE *f;
     char m[8];
-    unsigned ver, flags, vc, rcount, cc, res, v;
+    unsigned ver, flags, vc, rcount, cc, global_event_count, v;
     int i, j, k;
     unsigned long ul;
     if (!path || !p) return 0;
@@ -167,16 +171,20 @@ int yaat_bytecode_read_file(const char *path, YaatScriptPackage *p)
     yaat_script_package_init(p);
     if (fread(m, 1, 8, f) != 8 || memcmp(m, "YAATBC\0\0", 8) ||
         !r16(f, &ver) || ver != YAAT_BYTECODE_VERSION || !r16(f, &flags) ||
-        !r16(f, &vc) || !r16(f, &rcount) || !r16(f, &cc) || !r16(f, &res)) { fclose(f); return 0; }
-    if (vc > YAAT_MAX_VARS || rcount > YAAT_MAX_ROOMS || cc > YAAT_MAX_COMMANDS) { fclose(f); return 0; }
+        !r16(f, &vc) || !r16(f, &rcount) || !r16(f, &cc) || !r16(f, &global_event_count)) { fclose(f); return 0; }
+    if (vc > YAAT_MAX_VARS || rcount > YAAT_MAX_ROOMS || cc > YAAT_MAX_COMMANDS || global_event_count > YAAT_MAX_GLOBAL_EVENTS) { fclose(f); return 0; }
     p->var_count = (int)vc;
     p->room_count = (int)rcount;
     p->command_count = (int)cc;
+    p->global_event_count = (int)global_event_count;
     for (i = 0; i < p->var_count; ++i) {
         if (!rs(f, p->vars[i].name, 32) || !rv(f, &p->vars[i].value)) { fclose(f); return 0; }
     }
     for (i = 0; i < p->command_count; ++i) {
         if (!rc(f, &p->commands[i]) || !valid_command(&p->commands[i], p)) { fclose(f); return 0; }
+    }
+    for (i = 0; i < p->global_event_count; ++i) {
+        if (!re(f, &p->global_events[i]) || !valid_event(&p->global_events[i], p)) { fclose(f); return 0; }
     }
     for (i = 0; i < p->room_count; ++i) {
         YaatRoom *r = &p->rooms[i];

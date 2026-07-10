@@ -57,6 +57,9 @@ static int g_room_count;
 static int g_current_room;
 static YaatCommand g_commands[YAAT_MAX_COMMANDS];
 static int g_command_count;
+static YaatEvent g_global_events[YAAT_MAX_GLOBAL_EVENTS];
+static int g_global_event_count;
+static int g_script_call_depth;
 static YaatVar g_vars[YAAT_MAX_VARS];
 static int g_var_count;
 static char g_inventory[YAAT_MAX_INVENTORY][32];
@@ -1848,6 +1851,8 @@ static YaatEvent *yaat_find_event(YaatEvent *events, int count, const char *name
 static void yaat_runtime_request_room_assets(const char *room_id);
 static void yaat_enter_room(int room_index);
 
+#define YAAT_MAX_SCRIPT_CALL_DEPTH 16
+
 static void yaat_execute_commands(int first, int count)
 {
     int i;
@@ -1891,6 +1896,13 @@ static void yaat_execute_commands(int first, int count)
             YaatValue value = yaat_get_var(cmd->a);
             if (yaat_compare_values(&value, cmd->condition_op, &cmd->value)) yaat_execute_commands(cmd->first_child, cmd->child_count);
             else yaat_execute_commands(cmd->first_else_child, cmd->else_child_count);
+        } else if (cmd->kind == YAAT_CMD_CALL) {
+            YaatEvent *event = yaat_find_event(g_global_events, g_global_event_count, cmd->a, 0);
+            if (event && g_script_call_depth < YAAT_MAX_SCRIPT_CALL_DEPTH) {
+                ++g_script_call_depth;
+                yaat_execute_commands(event->first_command, event->command_count);
+                --g_script_call_depth;
+            }
         } else if (cmd->kind == YAAT_CMD_SHAKE) {
             yaat_start_shake(cmd->bool_value, cmd->int_value);
         }
@@ -1934,12 +1946,24 @@ static void yaat_offset_events(YaatEvent *events, int count, int command_base)
     for (i = 0; i < count; ++i) events[i].first_command += command_base;
 }
 
+static void yaat_import_global_events(YaatScriptPackage *package, int command_base)
+{
+    int i;
+    for (i = 0; i < package->global_event_count && g_global_event_count < YAAT_MAX_GLOBAL_EVENTS; ++i) {
+        YaatEvent event = package->global_events[i];
+        event.first_command += command_base;
+        g_global_events[g_global_event_count++] = event;
+    }
+}
+
 static void yaat_import_package(YaatScriptPackage *package)
 {
     int i;
     int j;
     int command_base = g_command_count;
     if (!package) return;
+    for (i = 0; i < package->var_count; ++i) yaat_set_var(package->vars[i].name, package->vars[i].bool_value);
+    yaat_import_global_events(package, command_base);
     for (i = 0; i < package->var_count; ++i) yaat_set_var_value(package->vars[i].name, &package->vars[i].value);
     for (i = 0; i < package->command_count && g_command_count < YAAT_MAX_COMMANDS; ++i) {
         YaatCommand command = package->commands[i];
