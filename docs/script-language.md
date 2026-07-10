@@ -367,7 +367,7 @@ goto cellar
 
 ### take
 
-Add an item to inventory and usually remove it from the room.
+Add an item to inventory. This legacy command does not change room entity visibility; prefer `pickup` when the script is moving a visible room object into inventory.
 
 ```text
 take <item>
@@ -377,6 +377,34 @@ Example:
 
 ```text
 take brass_key
+```
+
+### pickup
+
+Move an object in the current room into inventory. The runtime hides the named room object and adds the inventory item.
+
+```text
+pickup <object_id> <item_id>
+```
+
+Example:
+
+```text
+pickup brass_key brass_key
+```
+
+### drop
+
+Move an inventory item back into the current room. The runtime removes the inventory item, clears it if selected, and shows a predeclared room object at its authored position. Scripts should declare the droppable object in the room, usually hidden until `drop` runs.
+
+```text
+drop <item_id> <object_id>
+```
+
+Example:
+
+```text
+drop brass_key brass_key
 ```
 
 ### give
@@ -557,8 +585,7 @@ room hall {
     }
 
     on click {
-      take brass_key
-      hide brass_key
+      pickup brass_key brass_key
       set took_key = true
       say player "I picked up the brass key."
     }
