@@ -15,11 +15,6 @@ typedef struct YaatAssetBuffer {
     char source[YAAT_ASSET_MAX_PATH];
 } YaatAssetBuffer;
 
-typedef struct YaatAssetStore {
-    char loose_root[YAAT_ASSET_MAX_PATH];
-    char source[YAAT_ASSET_MAX_PATH];
-} YaatAssetStore;
-
 typedef struct YaatRuntimeObject {
     char id[YAAT_ASSET_MAX_NAME];
     char name[YAAT_ASSET_MAX_NAME];
@@ -63,6 +58,8 @@ typedef struct YaatRuntimeLoadResult {
 
 typedef struct YaatAssetStore {
     char root_path[YAAT_ASSET_MAX_PATH];
+    char loose_root[YAAT_ASSET_MAX_PATH];
+    char source[YAAT_ASSET_MAX_PATH];
 } YaatAssetStore;
 
 void yaat_asset_store_init(YaatAssetStore *store, const char *root_path);

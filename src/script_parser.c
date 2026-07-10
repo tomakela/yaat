@@ -177,10 +177,10 @@ static void yaat_parse_room(YaatScriptPackage *package, YaatScriptCursor *cursor
 int yaat_parse_script_text_into(YaatScriptPackage *package, const char *source)
 {
     ScriptTokenizerResult result;
+    YaatScriptCursor cursor;
     int ok;
     if (!package || !source) return 0;
     result = script_tokenize(source);
-    YaatScriptCursor cursor;
     cursor.tokens = result.tokens.items;
     cursor.count = result.tokens.count;
     cursor.index = 0;
