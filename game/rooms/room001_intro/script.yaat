@@ -27,8 +27,7 @@ room room001_intro {
     }
 
     on click {
-      take brass_key
-      hide brass_key
+      pickup brass_key brass_key
       set took_key = true
       play_sound "audio/sfx/pickup_key.wav"
       say player "I picked up the brass key."

@@ -21,8 +21,7 @@ room hall {
     }
 
     on click {
-      take brass_key
-      hide brass_key
+      pickup brass_key brass_key
       set took_key = true
       say player "I picked up the brass key."
     }

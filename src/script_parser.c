@@ -113,6 +113,18 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_TAKE;
             parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "pickup")) {
+            ScriptToken *object_id = yaat_advance_token(cursor);
+            ScriptToken *item_id = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_PICKUP;
+            parser_copy(cmd->a, sizeof(cmd->a), object_id->lexeme, object_id->length);
+            parser_copy(cmd->b, sizeof(cmd->b), item_id->lexeme, item_id->length);
+        } else if (yaat_token_is(token, "drop")) {
+            ScriptToken *item_id = yaat_advance_token(cursor);
+            ScriptToken *object_id = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_DROP;
+            parser_copy(cmd->a, sizeof(cmd->a), item_id->lexeme, item_id->length);
+            parser_copy(cmd->b, sizeof(cmd->b), object_id->lexeme, object_id->length);
         } else if (yaat_token_is(token, "hide")) {
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_HIDE;

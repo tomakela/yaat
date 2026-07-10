@@ -1352,6 +1352,23 @@ static void yaat_take_inventory(const char *item)
     }
 }
 
+static void yaat_remove_inventory(const char *item)
+{
+    int i;
+    for (i = 0; i < g_inventory_count; ++i) {
+        if (strcmp(g_inventory[i], item) == 0) {
+            int j;
+            for (j = i; j + 1 < g_inventory_count; ++j) {
+                memmove(g_inventory[j], g_inventory[j + 1], sizeof(g_inventory[j]));
+            }
+            if (g_inventory_count > 0) --g_inventory_count;
+            g_inventory[g_inventory_count][0] = '\0';
+            if (strcmp(g_selected_inventory, item) == 0) g_selected_inventory[0] = '\0';
+            return;
+        }
+    }
+}
+
 static int yaat_room_index_by_id(const char *id)
 {
     int i;
@@ -1406,6 +1423,16 @@ static void yaat_execute_commands(int first, int count)
             MessageBeep(MB_OK);
         } else if (cmd->kind == YAAT_CMD_TAKE) {
             yaat_take_inventory(cmd->a);
+        } else if (cmd->kind == YAAT_CMD_PICKUP) {
+            YaatEntity *entity = yaat_entity_by_id(&g_rooms[g_current_room], cmd->a);
+            if (entity) entity->visible = 0;
+            yaat_take_inventory(cmd->b);
+        } else if (cmd->kind == YAAT_CMD_DROP) {
+            YaatEntity *entity = yaat_entity_by_id(&g_rooms[g_current_room], cmd->b);
+            if (yaat_has_inventory(cmd->a)) {
+                yaat_remove_inventory(cmd->a);
+                if (entity) entity->visible = 1;
+            }
         } else if (cmd->kind == YAAT_CMD_HIDE) {
             YaatEntity *entity = yaat_entity_by_id(&g_rooms[g_current_room], cmd->a);
             if (entity) entity->visible = 0;

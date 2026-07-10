@@ -26,15 +26,15 @@ Records are serialized in this order: variables, commands, rooms. Room records c
 * Event: `name[32]`, optional inventory `item[32]`, `first_command:u16`, `command_count:u16`.
 * Entity: `kind:u16` (`0` hotspot, `1` object), `id[32]`, `name[64]`, `x/y/w/h:u16`, `visible:u16`, `event_count:u16`, then events.
 * Room: `id[32]`, `label[64]`, `color:u32`, `event_count:u16`, `entity_count:u16`, then events and entities.
-* Command: `opcode:u16`, `a[96]`, `b[96]`, `bool:u16`, `first_child:u16`, `child_count:u16`, `first_else_child:u16`, `else_child_count:u16`.
+* Command: `opcode:u16`, `a[96]`, `b[96]`, `bool:u16`, `int:u16`, `first_child:u16`, `child_count:u16`, `first_else_child:u16`, `else_child_count:u16`.
 
 ## Command opcodes
 
-Serialized opcodes map deterministically to runtime command kinds: `0=YAAT_CMD_SAY`, `1=YAAT_CMD_SET`, `2=YAAT_CMD_GOTO`, `3=YAAT_CMD_PLAY_SOUND`, `4=YAAT_CMD_TAKE`, `5=YAAT_CMD_HIDE`, `6=YAAT_CMD_IF`, `7=YAAT_CMD_SHAKE`.
+Serialized opcodes map deterministically to runtime command kinds: `0=YAAT_CMD_SAY`, `1=YAAT_CMD_SET`, `2=YAAT_CMD_GOTO`, `3=YAAT_CMD_PLAY_SOUND`, `4=YAAT_CMD_TAKE`, `5=YAAT_CMD_HIDE`, `6=YAAT_CMD_IF`, `7=YAAT_CMD_SHAKE`, `8=YAAT_CMD_PICKUP`, `9=YAAT_CMD_DROP`.
 
 ## Values
 
-Version 2 value encoding is command-specific: booleans are `u16` `0` or `1`; identifiers, asset paths, speakers, and dialogue text are inline strings. `YAAT_CMD_IF` uses `a` as the variable name and child command ranges for branches. `YAAT_CMD_SHAKE` stores the duration in `bool_value` and the magnitude in `int_value`.
+Version 2 value encoding is command-specific: booleans are `u16` `0` or `1`; identifiers, asset paths, speakers, and dialogue text are inline strings. `YAAT_CMD_IF` uses `a` as the variable name and child command ranges for branches. `YAAT_CMD_SHAKE` stores the duration in `bool_value` and the magnitude in `int_value`. `YAAT_CMD_PICKUP` stores `object_id` in `a` and `item_id` in `b`; `YAAT_CMD_DROP` stores `item_id` in `a` and `object_id` in `b`.
 
 ## Endian and alignment
 
