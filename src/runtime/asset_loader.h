@@ -135,6 +135,9 @@ int yaat_asset_store_load(YaatAssetStore *store, const char *logical_path,
                           YaatAssetBuffer *buffer);
 void yaat_asset_buffer_free(YaatAssetBuffer *buffer);
 
+void yaat_runtime_load_room_from_store(YaatAssetStore *store,
+                                       const char *room_id,
+                                       YaatRuntimeLoadResult *result);
 void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
                                              YaatRuntimeLoadResult *result);
 void yaat_runtime_load_room_from_store(YaatAssetStore *store,
