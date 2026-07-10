@@ -52,6 +52,11 @@ static char g_cursor_state[32] = "arrow";
 static int g_fullscreen;
 static RECT g_windowed_rect;
 static DWORD g_windowed_style;
+static int g_shake_duration_ms;
+static int g_shake_magnitude;
+static int g_shake_elapsed_ms;
+static int g_shake_offset_x;
+static int g_shake_offset_y;
 
 typedef struct YaatBitmap { unsigned long *pixels; int width; int height; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
 static YaatBitmap g_background_bitmap;
@@ -66,6 +71,51 @@ static int yaat_clamp_int(int value, int minimum, int maximum)
     if (value < minimum) return minimum;
     if (value > maximum) return maximum;
     return value;
+}
+
+
+static int yaat_shake_sample(int seed, int magnitude)
+{
+    unsigned long value;
+    if (magnitude <= 0) return 0;
+    value = (unsigned long)seed * 1103515245UL + 12345UL;
+    return (int)((value >> 16) % (unsigned long)((magnitude * 2) + 1)) - magnitude;
+}
+
+static void yaat_start_shake(int duration_ms, int magnitude)
+{
+    g_shake_duration_ms = yaat_clamp_int(duration_ms, 0, 10000);
+    g_shake_magnitude = yaat_clamp_int(magnitude, 0, 32);
+    g_shake_elapsed_ms = 0;
+    g_shake_offset_x = 0;
+    g_shake_offset_y = 0;
+}
+
+static void yaat_update_shake(void)
+{
+    int remaining;
+    int magnitude;
+
+    if (g_shake_elapsed_ms >= g_shake_duration_ms || g_shake_magnitude <= 0) {
+        g_shake_duration_ms = 0;
+        g_shake_elapsed_ms = 0;
+        g_shake_offset_x = 0;
+        g_shake_offset_y = 0;
+        return;
+    }
+
+    g_shake_elapsed_ms += YAAT_FRAME_TIMER_MS;
+    if (g_shake_elapsed_ms >= g_shake_duration_ms) {
+        g_shake_offset_x = 0;
+        g_shake_offset_y = 0;
+        return;
+    }
+
+    remaining = g_shake_duration_ms - g_shake_elapsed_ms;
+    magnitude = (g_shake_magnitude * remaining) / g_shake_duration_ms;
+    if (magnitude < 1) magnitude = 1;
+    g_shake_offset_x = yaat_clamp_int(yaat_shake_sample(g_shake_elapsed_ms + 17, magnitude), -32, 32);
+    g_shake_offset_y = yaat_clamp_int(yaat_shake_sample(g_shake_elapsed_ms + 53, magnitude), -32, 32);
 }
 
 static void yaat_copy(char *dst, size_t dst_size, const char *src, size_t len)
@@ -372,10 +422,6 @@ static void yaat_draw_bitmap(YaatBitmap *bitmap, int dst_x, int dst_y)
 static int yaat_draw_runtime_background(void)
 {
     char path[YAAT_ASSET_MAX_PATH * 2];
-    int copy_width;
-    int copy_height;
-    int y;
-
     if (g_runtime_load.room.room_path[0] == '\0' ||
         g_runtime_load.room.background[0] == '\0') {
         return 0;
@@ -388,20 +434,7 @@ static int yaat_draw_runtime_background(void)
         return 0;
     }
 
-    copy_width = g_background_bitmap.width;
-    copy_height = g_background_bitmap.height;
-    if (copy_width > g_renderer.width) {
-        copy_width = g_renderer.width;
-    }
-    if (copy_height > g_renderer.height) {
-        copy_height = g_renderer.height;
-    }
-
-    for (y = 0; y < copy_height; ++y) {
-        memcpy((unsigned char *)g_renderer.pixels + (y * g_renderer.pitch),
-               g_background_bitmap.pixels + (y * g_background_bitmap.width),
-               (size_t)copy_width * sizeof(unsigned long));
-    }
+    yaat_draw_bitmap(&g_background_bitmap, g_shake_offset_x, g_shake_offset_y);
 
     return 1;
 }
@@ -413,10 +446,10 @@ static void yaat_draw_player_placeholder(void)
     int body_x;
     int body_y;
 
-    shadow_x = g_player_x - (YAAT_PLAYER_WIDTH / 2) - 2;
-    shadow_y = g_player_y + 7;
-    body_x = g_player_x - (YAAT_PLAYER_WIDTH / 2);
-    body_y = g_player_y - YAAT_PLAYER_HEIGHT;
+    shadow_x = g_player_x - (YAAT_PLAYER_WIDTH / 2) - 2 + g_shake_offset_x;
+    shadow_y = g_player_y + 7 + g_shake_offset_y;
+    body_x = g_player_x - (YAAT_PLAYER_WIDTH / 2) + g_shake_offset_x;
+    body_y = g_player_y - YAAT_PLAYER_HEIGHT + g_shake_offset_y;
 
     yaat_draw_rect(&g_renderer, shadow_x, shadow_y, YAAT_PLAYER_WIDTH + 4, 5,
                    0x00664f38UL);
@@ -458,8 +491,8 @@ static void yaat_draw_player(void)
         return;
     }
 
-    draw_x = g_player_x - (g_player_bitmap.width / 2);
-    draw_y = g_player_y - g_player_bitmap.height;
+    draw_x = g_player_x - (g_player_bitmap.width / 2) + g_shake_offset_x;
+    draw_y = g_player_y - g_player_bitmap.height + g_shake_offset_y;
     yaat_draw_bitmap(&g_player_bitmap, draw_x, draw_y);
 }
 
@@ -480,11 +513,11 @@ static void yaat_draw_runtime_room(void)
         if (g_runtime_load.room.height > 0) {
             floor_y = (YAAT_BACKBUFFER_HEIGHT * 3) / 4;
         }
-        yaat_draw_rect(&g_renderer, 0, floor_y, YAAT_BACKBUFFER_WIDTH,
+        yaat_draw_rect(&g_renderer, g_shake_offset_x, floor_y + g_shake_offset_y, YAAT_BACKBUFFER_WIDTH,
                        YAAT_BACKBUFFER_HEIGHT - floor_y, 0x005f6f4aUL);
 
-        yaat_draw_rect(&g_renderer, 12, 12, 128, 22, 0x00282828UL);
-        yaat_draw_rect(&g_renderer, 14, 14, 124, 18, 0x00d8d0b8UL);
+        yaat_draw_rect(&g_renderer, 12 + g_shake_offset_x, 12 + g_shake_offset_y, 128, 22, 0x00282828UL);
+        yaat_draw_rect(&g_renderer, 14 + g_shake_offset_x, 14 + g_shake_offset_y, 124, 18, 0x00d8d0b8UL);
     }
 
     for (i = 0; i < g_runtime_load.room.hotspot_count; ++i) {
@@ -496,9 +529,9 @@ static void yaat_draw_runtime_room(void)
             continue;
         }
         hotspot_color = yaat_hash_color(hotspot->cursor, 0x00c08020UL);
-        yaat_draw_rect(&g_renderer, hotspot->x, hotspot->y,
+        yaat_draw_rect(&g_renderer, hotspot->x + g_shake_offset_x, hotspot->y + g_shake_offset_y,
                        hotspot->width, hotspot->height, 0x00f0d020UL);
-        yaat_draw_rect(&g_renderer, hotspot->x + 1, hotspot->y + 1,
+        yaat_draw_rect(&g_renderer, hotspot->x + 1 + g_shake_offset_x, hotspot->y + 1 + g_shake_offset_y,
                        hotspot->width - 2, hotspot->height - 2,
                        hotspot_color);
     }
@@ -518,14 +551,14 @@ static void yaat_draw_runtime_room(void)
                                yaat_runtime_logical_path(g_runtime_load.room.room_path),
                                object->sprite);
         if (yaat_load_bmp(&object_bitmap, object_path)) {
-            yaat_draw_bitmap(&object_bitmap, object->x, object->y);
+            yaat_draw_bitmap(&object_bitmap, object->x + g_shake_offset_x, object->y + g_shake_offset_y);
             yaat_unload_bitmap(&object_bitmap);
             continue;
         }
         object_color = yaat_hash_color(object->sprite, 0x002f5f9eUL);
-        yaat_draw_rect(&g_renderer, object->x, object->y,
+        yaat_draw_rect(&g_renderer, object->x + g_shake_offset_x, object->y + g_shake_offset_y,
                        object->width, object->height, 0x00202020UL);
-        yaat_draw_rect(&g_renderer, object->x + 1, object->y + 1,
+        yaat_draw_rect(&g_renderer, object->x + 1 + g_shake_offset_x, object->y + 1 + g_shake_offset_y,
                        object->width - 2, object->height - 2, object_color);
     }
 
@@ -746,6 +779,8 @@ static void yaat_execute_commands(int first, int count)
         } else if (cmd->kind == YAAT_CMD_IF) {
             if (yaat_get_var(cmd->a)) yaat_execute_commands(cmd->first_child, cmd->child_count);
             else yaat_execute_commands(cmd->first_else_child, cmd->else_child_count);
+        } else if (cmd->kind == YAAT_CMD_SHAKE) {
+            yaat_start_shake(cmd->bool_value, cmd->int_value);
         }
     }
 }
@@ -798,86 +833,19 @@ static void yaat_load_script_package(const char *bytecode_path, const char *sour
 {
     YaatScriptPackage package;
     yaat_script_package_init(&package);
-    if (yaat_bytecode_read_file(bytecode_path, &package) || yaat_parse_script_file_into(&package, source_path)) {
+    if (yaat_bytecode_read_file(bytecode_path, &package) ||
+        yaat_parse_script_file_into(&package, source_path)) {
         yaat_import_package(&package);
     }
-    YaatEntity *entity;
-    ScriptToken *token;
-    if (room->entity_count >= YAAT_MAX_ENTITIES) return;
-    entity = &room->entities[room->entity_count++];
-    memset(entity, 0, sizeof(*entity));
-    entity->kind = kind;
-    entity->visible = 1;
-    token = yaat_advance_token(cursor);
-    yaat_copy(entity->id, sizeof(entity->id), token->lexeme, token->length);
-    yaat_copy(entity->name, sizeof(entity->name), entity->id, strlen(entity->id));
-    if (!yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) return;
-    while (yaat_peek(cursor)->type != SCRIPT_TOKEN_RIGHT_BRACE && yaat_peek(cursor)->type != SCRIPT_TOKEN_EOF) {
-        token = yaat_advance_token(cursor);
-        if (token->type == SCRIPT_TOKEN_KEYWORD_ON) yaat_parse_event(cursor, entity->events, &entity->event_count);
-        else if (yaat_token_is(token, "name")) { token = yaat_advance_token(cursor); yaat_copy(entity->name, sizeof(entity->name), token->lexeme, token->length); }
-        else if (yaat_token_is(token, "at")) { entity->x = atoi(yaat_advance_token(cursor)->lexeme); yaat_match_token(cursor, SCRIPT_TOKEN_COMMA); entity->y = atoi(yaat_advance_token(cursor)->lexeme); }
-        else if (yaat_token_is(token, "size")) { entity->w = atoi(yaat_advance_token(cursor)->lexeme); yaat_match_token(cursor, SCRIPT_TOKEN_COMMA); entity->h = atoi(yaat_advance_token(cursor)->lexeme); }
-        else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
-        else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_STRING || yaat_peek(cursor)->type == SCRIPT_TOKEN_IDENTIFIER || yaat_peek(cursor)->type == SCRIPT_TOKEN_INTEGER) yaat_advance_token(cursor);
-    }
-    yaat_match_token(cursor, SCRIPT_TOKEN_RIGHT_BRACE);
-}
-
-static void yaat_parse_room(YaatScriptCursor *cursor)
-{
-    YaatRoom *room;
-    ScriptToken *token;
-    if (g_room_count >= YAAT_MAX_ROOMS) return;
-    room = &g_rooms[g_room_count++];
-    memset(room, 0, sizeof(*room));
-    room->color = 0x00d8c7a3UL + (unsigned long)(g_room_count * 0x00101010UL);
-    token = yaat_advance_token(cursor);
-    yaat_copy(room->id, sizeof(room->id), token->lexeme, token->length);
-    yaat_copy(room->label, sizeof(room->label), room->id, strlen(room->id));
-    if (!yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) return;
-    while (yaat_peek(cursor)->type != SCRIPT_TOKEN_RIGHT_BRACE && yaat_peek(cursor)->type != SCRIPT_TOKEN_EOF) {
-        token = yaat_advance_token(cursor);
-        if (token->type == SCRIPT_TOKEN_KEYWORD_ON) yaat_parse_event(cursor, room->events, &room->event_count);
-        else if (token->type == SCRIPT_TOKEN_KEYWORD_OBJECT) yaat_parse_entity(cursor, room, YAAT_ENTITY_OBJECT);
-        else if (token->type == SCRIPT_TOKEN_KEYWORD_HOTSPOT) yaat_parse_entity(cursor, room, YAAT_ENTITY_HOTSPOT);
-        else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
-        else if (yaat_peek(cursor)->type != SCRIPT_TOKEN_RIGHT_BRACE) yaat_advance_token(cursor);
-    }
-    yaat_match_token(cursor, SCRIPT_TOKEN_RIGHT_BRACE);
-}
-
-static void yaat_parse_script_text(const char *source)
-{
-    ScriptTokenizerResult result = script_tokenize(source);
-    YaatScriptCursor cursor;
-    cursor.tokens = result.tokens.items;
-    cursor.count = result.tokens.count;
-    cursor.index = 0;
-    while (yaat_peek(&cursor)->type != SCRIPT_TOKEN_EOF) {
-        ScriptToken *token = yaat_advance_token(&cursor);
-        if (token->type == SCRIPT_TOKEN_KEYWORD_VAR) {
-            ScriptToken *name = yaat_advance_token(&cursor);
-            char var_name[32];
-            yaat_match_token(&cursor, SCRIPT_TOKEN_EQUAL);
-            token = yaat_advance_token(&cursor);
-            yaat_copy(var_name, sizeof(var_name), name->lexeme, name->length);
-            yaat_set_var(var_name, token->type == SCRIPT_TOKEN_KEYWORD_TRUE);
-        } else if (token->type == SCRIPT_TOKEN_KEYWORD_ROOM) yaat_parse_room(&cursor);
-        else if (yaat_peek(&cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(&cursor); yaat_skip_block(&cursor); }
-    }
-    script_tokenizer_result_free(&result);
 }
 
 static void yaat_load_script_file(const char *path)
 {
-    unsigned char *buffer;
-    size_t size;
-
-    if (!yaat_asset_read_all(&g_asset_store, path, &buffer, &size)) return;
-    buffer[size] = '\0';
-    yaat_parse_script_text((const char *)buffer);
-    free(buffer);
+    YaatScriptPackage package;
+    yaat_script_package_init(&package);
+    if (yaat_parse_script_file_into(&package, path)) {
+        yaat_import_package(&package);
+    }
 }
 
 static void yaat_load_demo(void)
@@ -898,15 +866,15 @@ static void yaat_draw_script_scene(void)
     int i;
     YaatRoom *room = &g_rooms[g_current_room];
     yaat_gdi_renderer_clear(&g_renderer, room->color);
-    yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT - 44, YAAT_BACKBUFFER_WIDTH, 44, 0x008a6f48UL);
+    yaat_draw_rect(&g_renderer, g_shake_offset_x, YAAT_PLAYFIELD_HEIGHT - 44 + g_shake_offset_y, YAAT_BACKBUFFER_WIDTH, 44, 0x008a6f48UL);
     for (i = 0; i < room->entity_count; ++i) {
         YaatEntity *e = &room->entities[i];
         if (!e->visible) continue;
-        yaat_draw_rect(&g_renderer, e->x, e->y, e->w, e->h, e->kind == YAAT_ENTITY_OBJECT ? 0x00d4b24cUL : 0x004e8bc4UL);
-        yaat_draw_rect(&g_renderer, e->x + 2, e->y + 2, e->w - 4, e->h - 4, e->kind == YAAT_ENTITY_OBJECT ? 0x00ffe090UL : 0x008ec5ffUL);
+        yaat_draw_rect(&g_renderer, e->x + g_shake_offset_x, e->y + g_shake_offset_y, e->w, e->h, e->kind == YAAT_ENTITY_OBJECT ? 0x00d4b24cUL : 0x004e8bc4UL);
+        yaat_draw_rect(&g_renderer, e->x + 2 + g_shake_offset_x, e->y + 2 + g_shake_offset_y, e->w - 4, e->h - 4, e->kind == YAAT_ENTITY_OBJECT ? 0x00ffe090UL : 0x008ec5ffUL);
     }
-    yaat_draw_rect(&g_renderer, g_target_x - 5, g_target_y - 1, 11, 3, 0x000f3c70UL);
-    yaat_draw_rect(&g_renderer, g_target_x - 1, g_target_y - 5, 3, 11, 0x000f3c70UL);
+    yaat_draw_rect(&g_renderer, g_target_x - 5 + g_shake_offset_x, g_target_y - 1 + g_shake_offset_y, 11, 3, 0x000f3c70UL);
+    yaat_draw_rect(&g_renderer, g_target_x - 1 + g_shake_offset_x, g_target_y - 5 + g_shake_offset_y, 3, 11, 0x000f3c70UL);
     yaat_draw_player();
     yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
     if (g_dialogue_visible) {
@@ -1372,7 +1340,7 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
                                          (int)(short)HIWORD(l_param));
         InvalidateRect(window, 0, FALSE); return 0;
     case WM_TIMER:
-        if (w_param == YAAT_FRAME_TIMER_ID) { yaat_update_player(); InvalidateRect(window, 0, FALSE); return 0; }
+        if (w_param == YAAT_FRAME_TIMER_ID) { yaat_update_player(); yaat_update_shake(); InvalidateRect(window, 0, FALSE); return 0; }
         break;
     case WM_PAINT: {
         PAINTSTRUCT paint; HDC dc; RECT client_rect; YaatViewport viewport;
