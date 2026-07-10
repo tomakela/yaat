@@ -154,24 +154,152 @@ static void yaat_join_path(char *dst, int dst_size, const char *left,
     }
 }
 
-static void yaat_load_game_config(const char *path, YaatGameConfig *config,
+
+
+typedef struct YaatIniReader {
+    const char *data;
+    unsigned long size;
+    unsigned long offset;
+} YaatIniReader;
+
+void yaat_asset_store_init_loose(YaatAssetStore *store, const char *loose_root)
+{
+    if (store == 0) {
+        return;
+    }
+    yaat_copy_string(store->loose_root, sizeof(store->loose_root),
+                     loose_root != 0 ? loose_root : "game");
+    yaat_copy_string(store->source, sizeof(store->source), store->loose_root);
+    if (store->source[0] != '\0' &&
+        store->source[strlen(store->source) - 1] != '/' &&
+        store->source[strlen(store->source) - 1] != '\\') {
+        strncat(store->source, "/", sizeof(store->source) - 1 - strlen(store->source));
+    }
+}
+
+int yaat_asset_store_load(YaatAssetStore *store, const char *logical_path,
+                          YaatAssetBuffer *buffer)
+{
+    char physical_path[YAAT_ASSET_MAX_PATH];
+    FILE *file;
+    long size;
+
+    if (buffer == 0) {
+        return 0;
+    }
+    memset(buffer, 0, sizeof(*buffer));
+    if (store == 0 || logical_path == 0) {
+        return 0;
+    }
+    yaat_copy_string(buffer->logical_path, sizeof(buffer->logical_path), logical_path);
+    yaat_copy_string(buffer->source, sizeof(buffer->source), store->source);
+    yaat_join_path(physical_path, sizeof(physical_path), store->loose_root, logical_path);
+    file = fopen(physical_path, "rb");
+    if (file == 0) {
+        return 0;
+    }
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return 0;
+    }
+    size = ftell(file);
+    if (size < 0) {
+        fclose(file);
+        return 0;
+    }
+    if (fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return 0;
+    }
+    buffer->data = (unsigned char *)malloc((unsigned long)size + 1);
+    if (buffer->data == 0) {
+        fclose(file);
+        return 0;
+    }
+    buffer->size = (unsigned long)size;
+    if (size > 0 && fread(buffer->data, 1, (unsigned long)size, file) != (unsigned long)size) {
+        yaat_asset_buffer_free(buffer);
+        fclose(file);
+        return 0;
+    }
+    buffer->data[buffer->size] = '\0';
+    fclose(file);
+    return 1;
+}
+
+void yaat_asset_buffer_free(YaatAssetBuffer *buffer)
+{
+    if (buffer == 0) {
+        return;
+    }
+    if (buffer->data != 0) {
+        free(buffer->data);
+    }
+    memset(buffer, 0, sizeof(*buffer));
+}
+
+static int yaat_ini_read_line(YaatIniReader *reader, char *line, int line_size)
+{
+    int out;
+
+    if (reader == 0 || line == 0 || line_size <= 0 || reader->offset >= reader->size) {
+        return 0;
+    }
+    out = 0;
+    while (reader->offset < reader->size) {
+        char ch = reader->data[reader->offset++];
+        if (ch == '\n') {
+            break;
+        }
+        if (ch == '\r') {
+            if (reader->offset < reader->size && reader->data[reader->offset] == '\n') {
+                ++reader->offset;
+            }
+            break;
+        }
+        if (out < line_size - 1) {
+            line[out++] = ch;
+        }
+    }
+    line[out] = '\0';
+    return 1;
+}
+
+static void yaat_format_asset_error_path(char *dst, int dst_size,
+                                         const char *logical_path,
+                                         const char *source)
+{
+    yaat_copy_string(dst, dst_size, logical_path);
+    if (source != 0 && source[0] != '\0' && (int)strlen(dst) < dst_size - 10) {
+        strncat(dst, " (from ", dst_size - 1 - strlen(dst));
+        strncat(dst, source, dst_size - 1 - strlen(dst));
+        strncat(dst, ")", dst_size - 1 - strlen(dst));
+    }
+}
+static void yaat_load_game_config(YaatAssetStore *store, const char *path, YaatGameConfig *config,
                                   YaatRuntimeLoadResult *result)
 {
-    FILE *file;
+    YaatAssetBuffer buffer;
+    YaatIniReader reader;
     char line[YAAT_LINE_MAX];
     char section[YAAT_ASSET_MAX_NAME];
+    char error_path[YAAT_ASSET_MAX_PATH + YAAT_ASSET_MAX_PATH];
 
     yaat_copy_string(config->rooms_path, sizeof(config->rooms_path), "rooms");
     config->first_room[0] = '\0';
     section[0] = '\0';
 
-    file = fopen(path, "r");
-    if (file == 0) {
-        yaat_set_error(result, "Missing game metadata", path);
+    if (!yaat_asset_store_load(store, path, &buffer)) {
+        yaat_format_asset_error_path(error_path, sizeof(error_path), path,
+                                     store != 0 ? store->source : 0);
+        yaat_set_error(result, "Missing game metadata", error_path);
         return;
     }
+    reader.data = (const char *)buffer.data;
+    reader.size = buffer.size;
+    reader.offset = 0;
 
-    while (fgets(line, sizeof(line), file) != 0) {
+    while (yaat_ini_read_line(&reader, line, sizeof(line))) {
         char *text;
         char *equals;
 
@@ -202,31 +330,39 @@ static void yaat_load_game_config(const char *path, YaatGameConfig *config,
                              yaat_trim(equals + 1));
         }
     }
-    fclose(file);
+    yaat_asset_buffer_free(&buffer);
 
     if (config->first_room[0] == '\0') {
-        yaat_set_error(result, "game.ini is missing game.first_room", path);
+        yaat_format_asset_error_path(error_path, sizeof(error_path), path,
+                                     store != 0 ? store->source : 0);
+        yaat_set_error(result, "game.ini is missing game.first_room", error_path);
     }
 }
 
-static void yaat_load_room_ini(const char *path, YaatRuntimeRoom *room,
+static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRuntimeRoom *room,
                                YaatRuntimeLoadResult *result)
 {
-    FILE *file;
+    YaatAssetBuffer buffer;
+    YaatIniReader reader;
     char line[YAAT_LINE_MAX];
     char section[YAAT_ASSET_MAX_NAME];
+    char error_path[YAAT_ASSET_MAX_PATH + YAAT_ASSET_MAX_PATH];
 
     section[0] = '\0';
     room->width = 320;
     room->height = 200;
 
-    file = fopen(path, "r");
-    if (file == 0) {
-        yaat_set_error(result, "Missing room metadata", path);
+    if (!yaat_asset_store_load(store, path, &buffer)) {
+        yaat_format_asset_error_path(error_path, sizeof(error_path), path,
+                                     store != 0 ? store->source : 0);
+        yaat_set_error(result, "Missing room metadata", error_path);
         return;
     }
+    reader.data = (const char *)buffer.data;
+    reader.size = buffer.size;
+    reader.offset = 0;
 
-    while (fgets(line, sizeof(line), file) != 0) {
+    while (yaat_ini_read_line(&reader, line, sizeof(line))) {
         char *text;
         char *equals;
 
@@ -261,10 +397,12 @@ static void yaat_load_room_ini(const char *path, YaatRuntimeRoom *room,
             yaat_copy_string(room->background, sizeof(room->background), yaat_trim(equals));
         }
     }
-    fclose(file);
+    yaat_asset_buffer_free(&buffer);
 
     if (room->id[0] == '\0' || room->background[0] == '\0') {
-        yaat_set_error(result, "room.ini is missing required id/background", path);
+        yaat_format_asset_error_path(error_path, sizeof(error_path), path,
+                                     store != 0 ? store->source : 0);
+        yaat_set_error(result, "room.ini is missing required id/background", error_path);
     }
 }
 
@@ -294,19 +432,22 @@ static void yaat_parse_rect(const char *value, int *x, int *y, int *width,
     }
 }
 
-static void yaat_load_room_objects(const char *path, YaatRuntimeRoom *room)
+static void yaat_load_room_objects(YaatAssetStore *store, const char *path, YaatRuntimeRoom *room)
 {
-    FILE *file;
+    YaatAssetBuffer buffer;
+    YaatIniReader reader;
     char line[YAAT_LINE_MAX];
     YaatRuntimeObject *object;
 
-    file = fopen(path, "r");
-    if (file == 0) {
+    if (!yaat_asset_store_load(store, path, &buffer)) {
         return;
     }
+    reader.data = (const char *)buffer.data;
+    reader.size = buffer.size;
+    reader.offset = 0;
 
     object = 0;
-    while (fgets(line, sizeof(line), file) != 0) {
+    while (yaat_ini_read_line(&reader, line, sizeof(line))) {
         char *text;
         char *equals;
 
@@ -351,22 +492,25 @@ static void yaat_load_room_objects(const char *path, YaatRuntimeRoom *room)
             object->visible = yaat_bool_value(yaat_trim(equals), 1);
         }
     }
-    fclose(file);
+    yaat_asset_buffer_free(&buffer);
 }
 
-static void yaat_load_room_hotspots(const char *path, YaatRuntimeRoom *room)
+static void yaat_load_room_hotspots(YaatAssetStore *store, const char *path, YaatRuntimeRoom *room)
 {
-    FILE *file;
+    YaatAssetBuffer buffer;
+    YaatIniReader reader;
     char line[YAAT_LINE_MAX];
     YaatRuntimeHotspot *hotspot;
 
-    file = fopen(path, "r");
-    if (file == 0) {
+    if (!yaat_asset_store_load(store, path, &buffer)) {
         return;
     }
+    reader.data = (const char *)buffer.data;
+    reader.size = buffer.size;
+    reader.offset = 0;
 
     hotspot = 0;
-    while (fgets(line, sizeof(line), file) != 0) {
+    while (yaat_ini_read_line(&reader, line, sizeof(line))) {
         char *text;
         char *equals;
 
@@ -407,21 +551,17 @@ static void yaat_load_room_hotspots(const char *path, YaatRuntimeRoom *room)
                              yaat_trim(equals));
         }
     }
-    fclose(file);
+    yaat_asset_buffer_free(&buffer);
 }
 
-void yaat_runtime_load_start_room(const char *game_ini_path,
-                                  YaatRuntimeLoadResult *result)
+void yaat_runtime_load_start_room_from_store(YaatAssetStore *store,
+                                             YaatRuntimeLoadResult *result)
 {
     YaatGameConfig config;
-    char game_dir[YAAT_ASSET_MAX_PATH];
-    char rooms_root[YAAT_ASSET_MAX_PATH];
     char room_dir[YAAT_ASSET_MAX_PATH];
     char room_ini[YAAT_ASSET_MAX_PATH];
     char objects_ini[YAAT_ASSET_MAX_PATH];
     char hotspots_ini[YAAT_ASSET_MAX_PATH];
-    char *slash;
-    char *backslash;
 
     if (result == 0) {
         return;
@@ -429,10 +569,32 @@ void yaat_runtime_load_start_room(const char *game_ini_path,
     memset(result, 0, sizeof(*result));
     result->ok = 1;
 
-    yaat_load_game_config(game_ini_path, &config, result);
+    yaat_load_game_config(store, "game.ini", &config, result);
     if (!result->ok) {
         return;
     }
+
+    yaat_join_path(room_dir, sizeof(room_dir), config.rooms_path, config.first_room);
+    yaat_join_path(room_ini, sizeof(room_ini), room_dir, "room.ini");
+    yaat_join_path(objects_ini, sizeof(objects_ini), room_dir, "objects.ini");
+    yaat_join_path(hotspots_ini, sizeof(hotspots_ini), room_dir, "hotspots.ini");
+
+    yaat_copy_string(result->room.room_path, sizeof(result->room.room_path), room_dir);
+    yaat_load_room_ini(store, room_ini, &result->room, result);
+    if (!result->ok) {
+        return;
+    }
+    yaat_load_room_objects(store, objects_ini, &result->room);
+    yaat_load_room_hotspots(store, hotspots_ini, &result->room);
+}
+
+void yaat_runtime_load_start_room(const char *game_ini_path,
+                                  YaatRuntimeLoadResult *result)
+{
+    YaatAssetStore store;
+    char game_dir[YAAT_ASSET_MAX_PATH];
+    char *slash;
+    char *backslash;
 
     yaat_copy_string(game_dir, sizeof(game_dir), game_ini_path);
     slash = strrchr(game_dir, '/');
@@ -443,20 +605,8 @@ void yaat_runtime_load_start_room(const char *game_ini_path,
     if (slash != 0) {
         *slash = '\0';
     } else {
-        yaat_copy_string(game_dir, sizeof(game_dir), ".");
+        yaat_copy_string(game_dir, sizeof(game_dir), "game");
     }
-
-    yaat_join_path(rooms_root, sizeof(rooms_root), game_dir, config.rooms_path);
-    yaat_join_path(room_dir, sizeof(room_dir), rooms_root, config.first_room);
-    yaat_join_path(room_ini, sizeof(room_ini), room_dir, "room.ini");
-    yaat_join_path(objects_ini, sizeof(objects_ini), room_dir, "objects.ini");
-    yaat_join_path(hotspots_ini, sizeof(hotspots_ini), room_dir, "hotspots.ini");
-
-    yaat_copy_string(result->room.room_path, sizeof(result->room.room_path), room_dir);
-    yaat_load_room_ini(room_ini, &result->room, result);
-    if (!result->ok) {
-        return;
-    }
-    yaat_load_room_objects(objects_ini, &result->room);
-    yaat_load_room_hotspots(hotspots_ini, &result->room);
+    yaat_asset_store_init_loose(&store, game_dir);
+    yaat_runtime_load_start_room_from_store(&store, result);
 }
