@@ -95,6 +95,43 @@ hotspot locked_door {
 }
 ```
 
+Top-level reusable command blocks may also be declared with `event` or `proc`:
+
+```text
+event <id> {
+  ...
+}
+
+proc <id> {
+  ...
+}
+```
+
+Both forms define a global command block named by `<id>`. These blocks do not run by themselves; invoke them from another command block with `call <id>`.
+
+```text
+event show_locked_message {
+  say player "The door is locked."
+}
+
+proc unlock_door {
+  set door_locked = false
+  say narrator "The lock clicks open."
+}
+
+hotspot locked_door {
+  on look {
+    call show_locked_message
+  }
+
+  on use brass_key {
+    call unlock_door
+  }
+}
+```
+
+For version 0, `event` and `proc` are parser aliases for the same global command-block storage and runtime `call` behavior. The intended convention is to use `event` for externally meaningful story or game events and `proc` for helper procedures shared by multiple handlers. The parser entry point `yaat_parse_script_text_into` accepts either a tokenized `event` keyword (`SCRIPT_TOKEN_KEYWORD_EVENT`) or identifier text `proc` at the top level and passes both forms to the same event parser.
+
 ### Global variables
 
 Global variables define initial flag or simple value state.
