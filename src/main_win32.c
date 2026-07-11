@@ -28,6 +28,11 @@
 #define YAAT_VERB_BUTTON_HEIGHT 13
 #define YAAT_INVENTORY_SLOT_SIZE 20
 #define YAAT_MAX_RUNTIME_OBJECT_MUTATIONS 64
+#define YAAT_NAV_CELL_SIZE 4
+#define YAAT_NAV_GRID_WIDTH ((YAAT_BACKBUFFER_WIDTH + YAAT_NAV_CELL_SIZE - 1) / YAAT_NAV_CELL_SIZE)
+#define YAAT_NAV_GRID_HEIGHT ((YAAT_PLAYFIELD_HEIGHT + YAAT_NAV_CELL_SIZE - 1) / YAAT_NAV_CELL_SIZE)
+#define YAAT_NAV_GRID_CELLS (YAAT_NAV_GRID_WIDTH * YAAT_NAV_GRID_HEIGHT)
+#define YAAT_MAX_PATH_WAYPOINTS YAAT_NAV_GRID_CELLS
 
 typedef struct YaatRuntimeObjectMutation {
     char room_id[YAAT_ASSET_MAX_NAME];
@@ -49,6 +54,10 @@ static int g_player_x = YAAT_BACKBUFFER_WIDTH / 2;
 static int g_player_y = YAAT_PLAYFIELD_HEIGHT / 2;
 static int g_target_x = YAAT_BACKBUFFER_WIDTH / 2;
 static int g_target_y = YAAT_PLAYFIELD_HEIGHT / 2;
+static int g_path_waypoint_x[YAAT_MAX_PATH_WAYPOINTS];
+static int g_path_waypoint_y[YAAT_MAX_PATH_WAYPOINTS];
+static int g_path_waypoint_count;
+static int g_path_waypoint_index;
 static int g_player_facing_right = 1;
 static char g_player_animation_id[YAAT_ASSET_MAX_NAME] = "idle";
 static int g_player_animation_frame;
@@ -157,6 +166,7 @@ static void yaat_draw_bitmap_transparent(YaatBitmap *bitmap, int dst_x, int dst_
                                          const char *mask_base_path);
 static char *yaat_trim_text(char *text);
 static int yaat_load_bmp(YaatBitmap *bitmap, const char *path);
+static int yaat_player_motion_complete(void);
 static void yaat_unload_bitmap(YaatBitmap *bitmap);
 static void yaat_click_game(int x, int y, int immediate_room_change);
 static void yaat_pending_room_change_maybe_complete(void);
@@ -827,8 +837,159 @@ static int yaat_is_walkable_at(int x, int y)
     return red + green + blue >= 128;
 }
 
+static void yaat_clear_player_path(void)
+{
+    g_path_waypoint_count = 0;
+    g_path_waypoint_index = 0;
+}
+
+static int yaat_room_has_walkmask(void)
+{
+    return g_runtime_load.ok && g_runtime_load.room.walkmask[0] != '\0' &&
+           yaat_load_runtime_walkmask();
+}
+
+static int yaat_nav_cell_x_to_world(int cell_x)
+{
+    return yaat_clamp_int((cell_x * YAAT_NAV_CELL_SIZE) + (YAAT_NAV_CELL_SIZE / 2),
+                          YAAT_PLAYER_WIDTH / 2,
+                          YAAT_BACKBUFFER_WIDTH - (YAAT_PLAYER_WIDTH / 2));
+}
+
+static int yaat_nav_cell_y_to_world(int cell_y)
+{
+    return yaat_clamp_int((cell_y * YAAT_NAV_CELL_SIZE) + (YAAT_NAV_CELL_SIZE / 2),
+                          YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
+}
+
+static int yaat_nav_world_to_cell_x(int x)
+{
+    return yaat_clamp_int(x / YAAT_NAV_CELL_SIZE, 0, YAAT_NAV_GRID_WIDTH - 1);
+}
+
+static int yaat_nav_world_to_cell_y(int y)
+{
+    return yaat_clamp_int(y / YAAT_NAV_CELL_SIZE, 0, YAAT_NAV_GRID_HEIGHT - 1);
+}
+
+static int yaat_nav_cell_walkable(int cell_x, int cell_y)
+{
+    int x;
+    int y;
+    if (cell_x < 0 || cell_y < 0 ||
+        cell_x >= YAAT_NAV_GRID_WIDTH || cell_y >= YAAT_NAV_GRID_HEIGHT) {
+        return 0;
+    }
+    x = yaat_nav_cell_x_to_world(cell_x);
+    y = yaat_nav_cell_y_to_world(cell_y);
+    return yaat_is_walkable_at(x, y);
+}
+
+static int yaat_path_append_waypoint(int x, int y)
+{
+    if (g_path_waypoint_count >= YAAT_MAX_PATH_WAYPOINTS) return 0;
+    g_path_waypoint_x[g_path_waypoint_count] = x;
+    g_path_waypoint_y[g_path_waypoint_count] = y;
+    ++g_path_waypoint_count;
+    return 1;
+}
+
+static int yaat_build_player_route(int target_x, int target_y)
+{
+    static short came_from[YAAT_NAV_GRID_CELLS];
+    static short queue[YAAT_NAV_GRID_CELLS];
+    static short route[YAAT_NAV_GRID_CELLS];
+    int start_x;
+    int start_y;
+    int goal_x;
+    int goal_y;
+    int start;
+    int goal;
+    int head;
+    int tail;
+    int found;
+    int i;
+    int route_count;
+
+    yaat_clear_player_path();
+    if (!yaat_room_has_walkmask()) return 0;
+
+    start_x = yaat_nav_world_to_cell_x(g_player_x);
+    start_y = yaat_nav_world_to_cell_y(g_player_y);
+    goal_x = yaat_nav_world_to_cell_x(target_x);
+    goal_y = yaat_nav_world_to_cell_y(target_y);
+    if (!yaat_nav_cell_walkable(goal_x, goal_y)) return 0;
+
+    start = (start_y * YAAT_NAV_GRID_WIDTH) + start_x;
+    goal = (goal_y * YAAT_NAV_GRID_WIDTH) + goal_x;
+    for (i = 0; i < YAAT_NAV_GRID_CELLS; ++i) came_from[i] = -1;
+    head = 0;
+    tail = 0;
+    queue[tail++] = (short)start;
+    came_from[start] = (short)start;
+    found = start == goal;
+
+    while (head < tail && !found) {
+        static const int offsets[8][2] = {
+            { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 },
+            { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 }
+        };
+        int current;
+        int cx;
+        int cy;
+        current = queue[head++];
+        cx = current % YAAT_NAV_GRID_WIDTH;
+        cy = current / YAAT_NAV_GRID_WIDTH;
+        for (i = 0; i < 8; ++i) {
+            int nx = cx + offsets[i][0];
+            int ny = cy + offsets[i][1];
+            int next;
+            if (!yaat_nav_cell_walkable(nx, ny)) continue;
+            if (offsets[i][0] != 0 && offsets[i][1] != 0 &&
+                (!yaat_nav_cell_walkable(cx + offsets[i][0], cy) ||
+                 !yaat_nav_cell_walkable(cx, cy + offsets[i][1]))) {
+                continue;
+            }
+            next = (ny * YAAT_NAV_GRID_WIDTH) + nx;
+            if (came_from[next] != -1) continue;
+            came_from[next] = (short)current;
+            if (next == goal) {
+                found = 1;
+                break;
+            }
+            queue[tail++] = (short)next;
+        }
+    }
+    if (!found) return 0;
+
+    route_count = 0;
+    i = goal;
+    while (i != start && route_count < YAAT_NAV_GRID_CELLS) {
+        route[route_count++] = (short)i;
+        i = came_from[i];
+    }
+
+    for (i = route_count - 1; i >= 0; --i) {
+        int cell = route[i];
+        int cx = cell % YAAT_NAV_GRID_WIDTH;
+        int cy = cell / YAAT_NAV_GRID_WIDTH;
+        if (!yaat_path_append_waypoint(yaat_nav_cell_x_to_world(cx),
+                                       yaat_nav_cell_y_to_world(cy))) {
+            break;
+        }
+    }
+    if (g_path_waypoint_count == 0 ||
+        g_path_waypoint_x[g_path_waypoint_count - 1] != target_x ||
+        g_path_waypoint_y[g_path_waypoint_count - 1] != target_y) {
+        yaat_path_append_waypoint(target_x, target_y);
+    }
+    return g_path_waypoint_count > 0;
+}
+
 static void yaat_set_player_target(int x, int y)
 {
+    int has_walkmask;
+
     x = yaat_clamp_int(x, YAAT_PLAYER_WIDTH / 2,
                        YAAT_BACKBUFFER_WIDTH - (YAAT_PLAYER_WIDTH / 2));
     y = yaat_clamp_int(y, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
@@ -840,8 +1001,39 @@ static void yaat_set_player_target(int x, int y)
     } else if (x > g_player_x) {
         g_player_facing_right = 1;
     }
-    g_target_x = x;
-    g_target_y = y;
+
+    has_walkmask = yaat_room_has_walkmask();
+    if (has_walkmask) {
+        if (!yaat_build_player_route(x, y)) {
+            return;
+        }
+        g_target_x = g_path_waypoint_x[g_path_waypoint_index];
+        g_target_y = g_path_waypoint_y[g_path_waypoint_index];
+    } else {
+        g_target_x = x;
+        g_target_y = y;
+        yaat_clear_player_path();
+    }
+}
+
+static int yaat_player_motion_complete(void)
+{
+    return g_player_x == g_target_x && g_player_y == g_target_y &&
+           g_path_waypoint_index >= g_path_waypoint_count;
+}
+
+static void yaat_advance_player_path(void)
+{
+    while (g_path_waypoint_index < g_path_waypoint_count &&
+           g_player_x == g_target_x && g_player_y == g_target_y) {
+        ++g_path_waypoint_index;
+        if (g_path_waypoint_index < g_path_waypoint_count) {
+            g_target_x = g_path_waypoint_x[g_path_waypoint_index];
+            g_target_y = g_path_waypoint_y[g_path_waypoint_index];
+        } else {
+            yaat_clear_player_path();
+        }
+    }
 }
 
 static int yaat_find_walk_target_for_rect(int rect_x, int rect_y, int rect_width,
@@ -2353,6 +2545,7 @@ static void yaat_execute_commands(int first, int count)
             g_player_y = yaat_clamp_int(cmd->int_value, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
             g_target_x = g_player_x;
             g_target_y = g_player_y;
+            yaat_clear_player_path();
         } else if (cmd->kind == YAAT_CMD_SET_PLAYER_VISIBLE) {
             g_player_visible = cmd->bool_value != 0;
         } else if (cmd->kind == YAAT_CMD_DIALOG) {
@@ -2451,6 +2644,7 @@ static void yaat_enter_room(int room_index)
     g_player_y = YAAT_PLAYFIELD_HEIGHT - 20;
     g_target_x = g_player_x;
     g_target_y = g_player_y;
+    yaat_clear_player_path();
     enter_event = yaat_find_event(g_rooms[g_current_room].events, g_rooms[g_current_room].event_count, "enter", 0);
     yaat_execute_event(enter_event);
 }
@@ -2687,6 +2881,7 @@ static void yaat_update_player(void)
     if (!yaat_is_walkable_at(g_target_x, g_target_y)) {
         g_target_x = g_player_x;
         g_target_y = g_player_y;
+        yaat_clear_player_path();
     }
     dx = g_target_x - g_player_x;
     dy = g_target_y - g_player_y;
@@ -2705,18 +2900,23 @@ static void yaat_update_player(void)
             moved = 1;
         } else {
             g_target_x = g_player_x;
+            yaat_clear_player_path();
         }
         if (dy != 0 && yaat_is_walkable_at(g_player_x, next_y)) {
             g_player_y = next_y;
             moved = 1;
         } else {
             g_target_y = g_player_y;
+            yaat_clear_player_path();
         }
     }
 
     if (g_player_x == g_target_x && g_player_y == g_target_y) {
-        yaat_pending_room_change_maybe_complete();
-        yaat_pending_interaction_maybe_complete();
+        yaat_advance_player_path();
+        if (yaat_player_motion_complete()) {
+            yaat_pending_room_change_maybe_complete();
+            yaat_pending_interaction_maybe_complete();
+        }
     }
 
     moving = moved;
@@ -2756,8 +2956,18 @@ static void yaat_update_player(void)
 
 static void yaat_nudge_player_target(int dx, int dy)
 {
+    int target_x;
+    int target_y;
+
     yaat_pending_room_change_clear();
-    yaat_set_player_target(g_target_x + dx, g_target_y + dy);
+    if (g_path_waypoint_count > 0) {
+        target_x = g_path_waypoint_x[g_path_waypoint_count - 1];
+        target_y = g_path_waypoint_y[g_path_waypoint_count - 1];
+    } else {
+        target_x = g_target_x;
+        target_y = g_target_y;
+    }
+    yaat_set_player_target(target_x + dx, target_y + dy);
 }
 
 
@@ -2931,6 +3141,7 @@ static void yaat_runtime_change_room(const YaatRuntimeHotspot *hotspot)
     g_player_y = player_y;
     g_target_x = g_player_x;
     g_target_y = g_player_y;
+    yaat_clear_player_path();
     if (script_room_index >= 0) {
         enter_event = yaat_find_event(g_rooms[g_current_room].events,
                                       g_rooms[g_current_room].event_count,
@@ -2944,7 +3155,7 @@ static void yaat_pending_room_change_maybe_complete(void)
     YaatRuntimeHotspot *hotspot;
 
     if (!g_pending_room_change || !g_runtime_load.ok) return;
-    if (g_player_x != g_target_x || g_player_y != g_target_y) return;
+    if (!yaat_player_motion_complete()) return;
     hotspot = yaat_runtime_hotspot_by_id(g_pending_room_change_hotspot_id);
     if (hotspot == 0 || !yaat_runtime_hotspot_change_room_enabled(hotspot)) {
         yaat_pending_room_change_clear();
@@ -2965,7 +3176,7 @@ static void yaat_pending_interaction_maybe_complete(void)
     int click_y;
 
     if (!g_pending_interaction) return;
-    if (g_player_x != g_target_x || g_player_y != g_target_y) return;
+    if (!yaat_player_motion_complete()) return;
 
     click_x = g_pending_interaction_x;
     click_y = g_pending_interaction_y;
@@ -3341,8 +3552,6 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
     } else if (backbuffer_x > g_player_x) {
         g_player_facing_right = 1;
     }
-    g_target_x = backbuffer_x;
-    g_target_y = yaat_clamp_int(backbuffer_y, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
     yaat_set_player_target(backbuffer_x, backbuffer_y);
     yaat_click_game(backbuffer_x, backbuffer_y, 0);
 }
