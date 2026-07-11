@@ -1,6 +1,7 @@
 #include <windows.h>
 
 #include "platform/win32/gdi_renderer.h"
+#include "platform/win32/audio_winmm.h"
 #include "script_parser.h"
 #include "script_bytecode.h"
 
@@ -70,6 +71,7 @@ static int g_dialogue_visible;
 static YaatRuntimeLoadResult g_runtime_load;
 static YaatAssetStore g_asset_store;
 static YaatAssetStore g_runtime_asset_store;
+static YaatWinmmAudio g_audio;
 static YaatRuntimeHotspot g_runtime_hotspots[YAAT_MAX_RUNTIME_HOTSPOTS];
 static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
@@ -2130,7 +2132,7 @@ static void yaat_execute_commands(int first, int count)
             int idx = yaat_room_index_by_id(cmd->a);
             if (idx >= 0) yaat_enter_room(idx);
         } else if (cmd->kind == YAAT_CMD_PLAY_SOUND) {
-            MessageBeep(MB_OK);
+            yaat_winmm_audio_play_sound(&g_audio, cmd->a);
         } else if (cmd->kind == YAAT_CMD_TAKE) {
             yaat_take_inventory(cmd->a);
         } else if (cmd->kind == YAAT_CMD_PICKUP) {
@@ -2257,6 +2259,11 @@ static void yaat_runtime_request_room_assets(const char *room_id)
     yaat_apply_runtime_object_mutations();
     yaat_load_runtime_hotspots();
     yaat_apply_runtime_object_state();
+    if (g_runtime_load.ok && g_runtime_load.room.music[0] != '\0') {
+        yaat_winmm_audio_play_music(&g_audio, g_runtime_load.room.music);
+    } else {
+        yaat_winmm_audio_stop_music(&g_audio);
+    }
 }
 
 static void yaat_enter_room(int room_index)
@@ -3182,6 +3189,9 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         if (g_runtime_load.ok) {
             runtime_room_index = yaat_room_index_by_id(g_runtime_load.room.id);
             if (runtime_room_index >= 0) g_current_room = runtime_room_index;
+            if (g_runtime_load.room.music[0] != '\0') {
+                yaat_winmm_audio_play_music(&g_audio, g_runtime_load.room.music);
+            }
         }
         SetTimer(window, YAAT_FRAME_TIMER_ID, YAAT_FRAME_TIMER_MS, 0);
         return 0;
@@ -3218,6 +3228,18 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         if ((GetKeyState(VK_CONTROL) & 0x8000) && w_param == 'L') {
             yaat_load_script_state(YAAT_SAVE_PATH);
             InvalidateRect(window, 0, FALSE);
+            return 0;
+        }
+        if (w_param == 'M') {
+            yaat_winmm_audio_toggle_muted(&g_audio);
+            return 0;
+        }
+        if (w_param == VK_OEM_MINUS || w_param == VK_SUBTRACT) {
+            yaat_winmm_audio_set_volume(&g_audio, yaat_winmm_audio_volume(&g_audio) - 10);
+            return 0;
+        }
+        if (w_param == VK_OEM_PLUS || w_param == VK_ADD) {
+            yaat_winmm_audio_set_volume(&g_audio, yaat_winmm_audio_volume(&g_audio) + 10);
             return 0;
         }
         if (w_param == VK_LEFT) yaat_nudge_player_target(-16, 0);
@@ -3267,7 +3289,7 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
     }
     case WM_CLOSE: DestroyWindow(window); return 0;
     case WM_DESTROY:
-        KillTimer(window, YAAT_FRAME_TIMER_ID); yaat_unload_bitmap(&g_font_bitmap); yaat_gdi_renderer_shutdown(&g_renderer); g_renderer_ready = 0; PostQuitMessage(0); return 0;
+        KillTimer(window, YAAT_FRAME_TIMER_ID); yaat_winmm_audio_shutdown(&g_audio); yaat_unload_bitmap(&g_font_bitmap); yaat_gdi_renderer_shutdown(&g_renderer); g_renderer_ready = 0; PostQuitMessage(0); return 0;
     default: break;
     }
     return DefWindowProcA(window, message, w_param, l_param);
@@ -3284,6 +3306,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
 
     yaat_asset_store_init_loose(&g_asset_store, "game");
     yaat_asset_store_init_loose(&g_runtime_asset_store, "game");
+    yaat_winmm_audio_init(&g_audio, &g_runtime_asset_store);
     yaat_runtime_load_start_room_from_store(&g_asset_store, &g_runtime_load);
     ZeroMemory(&window_class, sizeof(window_class));
     window_class.cbSize = sizeof(window_class); window_class.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS; window_class.lpfnWndProc = yaat_window_proc;

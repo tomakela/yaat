@@ -447,6 +447,9 @@ static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRunt
             room->far_scale = atof(yaat_trim(equals));
         } else if (strcmp(section, "display") == 0 && strcmp(text, "walkmask") == 0) {
             yaat_copy_string(room->walkmask, sizeof(room->walkmask), yaat_trim(equals));
+        } else if ((strcmp(section, "audio") == 0 || strcmp(section, "display") == 0) &&
+                   strcmp(text, "music") == 0) {
+            yaat_copy_string(room->music, sizeof(room->music), yaat_trim(equals));
         }
     }
     yaat_asset_buffer_free(&buffer);
