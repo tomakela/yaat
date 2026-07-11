@@ -103,7 +103,8 @@ static int g_script_resume_count;
 static int g_script_resume_index;
 
 #define YAAT_SAVE_STATE_VERSION 1
-#define YAAT_SAVE_PATH "yaat_save_state.txt"
+#define YAAT_SAVE_SLOT_COUNT 3
+#define YAAT_SAVE_PATH "yaat_save_state_slot1.txt"
 #define YAAT_MAX_SAVED_RUNTIME_OBJECTS (YAAT_MAX_ROOMS * YAAT_ASSET_MAX_OBJECTS)
 
 typedef struct YaatSavedRuntimeObjectState {
@@ -123,6 +124,23 @@ typedef struct YaatSavedRuntimeObjectState {
 static YaatSavedRuntimeObjectState g_saved_runtime_objects[YAAT_MAX_SAVED_RUNTIME_OBJECTS];
 static int g_saved_runtime_object_count;
 static int g_suppress_runtime_state_capture;
+
+typedef enum YaatSaveMenuMode {
+    YAAT_SAVE_MENU_CLOSED,
+    YAAT_SAVE_MENU_SAVE,
+    YAAT_SAVE_MENU_LOAD
+} YaatSaveMenuMode;
+
+typedef struct YaatSaveSlotInfo {
+    int exists;
+    char label[32];
+    char room[YAAT_ASSET_MAX_NAME];
+    char timestamp[32];
+    unsigned long play_time_ms;
+} YaatSaveSlotInfo;
+
+static YaatSaveMenuMode g_save_menu_mode;
+static int g_save_menu_selected_slot;
 
 typedef struct YaatViewport { int x; int y; int width; int height; } YaatViewport;
 typedef struct YaatBitmap { unsigned long *pixels; int width; int height; int has_alpha; char path[YAAT_ASSET_MAX_PATH * 2]; } YaatBitmap;
@@ -155,6 +173,7 @@ static void yaat_click_game(int x, int y, int immediate_room_change);
 static void yaat_pending_room_change_maybe_complete(void);
 static void yaat_pending_interaction_maybe_complete(void);
 static void yaat_update_script_timers(void);
+static void yaat_open_save_menu(YaatSaveMenuMode mode);
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -1768,7 +1787,109 @@ static int yaat_room_index_by_id(const char *id)
 static YaatEntity *yaat_entity_by_id(YaatRoom *room, const char *id);
 static void yaat_runtime_request_room_assets(const char *room_id);
 
-static int yaat_save_script_state(const char *path)
+
+static void yaat_save_slot_path(int slot, char *path, size_t path_size)
+{
+    if (path_size == 0) return;
+    if (slot <= 0) {
+        yaat_copy(path, path_size, YAAT_SAVE_PATH, strlen(YAAT_SAVE_PATH));
+        return;
+    }
+    sprintf(path, "yaat_save_state_slot%d.txt", slot + 1);
+}
+
+static void yaat_default_save_slot_label(int slot, char *label, size_t label_size)
+{
+    if (label_size == 0) return;
+    sprintf(label, "Slot %d", slot + 1);
+}
+
+static void yaat_current_timestamp(char *timestamp, size_t timestamp_size)
+{
+    SYSTEMTIME time;
+    if (timestamp_size == 0) return;
+    GetLocalTime(&time);
+    sprintf(timestamp, "%04u-%02u-%02u %02u:%02u",
+            (unsigned)time.wYear, (unsigned)time.wMonth, (unsigned)time.wDay,
+            (unsigned)time.wHour, (unsigned)time.wMinute);
+}
+
+static const char *yaat_current_room_id(void)
+{
+    return (g_current_room >= 0 && g_current_room < g_room_count) ?
+           g_rooms[g_current_room].id : "";
+}
+
+static const char *yaat_current_room_label(void)
+{
+    if (g_runtime_load.ok && g_runtime_load.room.label[0] != '\0') return g_runtime_load.room.label;
+    return yaat_current_room_id();
+}
+
+static void yaat_get_ui_string(const char *key, const char *fallback,
+                               char *out, size_t out_size)
+{
+    FILE *file;
+    char line[256];
+    size_t key_len;
+
+    if (out_size == 0) return;
+    yaat_copy(out, out_size, fallback, strlen(fallback));
+    file = fopen("game/strings/en.ini", "r");
+    if (file == 0) return;
+    key_len = strlen(key);
+    while (fgets(line, sizeof(line), file) != 0) {
+        char *text = yaat_trim_text(line);
+        if (strncmp(text, key, key_len) == 0 && text[key_len] == '=') {
+            char *value = yaat_trim_text(text + key_len + 1);
+            yaat_copy(out, out_size, value, strlen(value));
+            break;
+        }
+    }
+    fclose(file);
+}
+
+static void yaat_read_save_slot_info(int slot, YaatSaveSlotInfo *info)
+{
+    FILE *file;
+    char path[64];
+    char key[64];
+    int version;
+
+    memset(info, 0, sizeof(*info));
+    yaat_default_save_slot_label(slot, info->label, sizeof(info->label));
+    yaat_save_slot_path(slot, path, sizeof(path));
+    file = fopen(path, "r");
+    if (file == 0) return;
+    if (fscanf(file, "%63s %d", key, &version) == 2 &&
+        strcmp(key, "YAAT_SCRIPT_STATE") == 0 && version == YAAT_SAVE_STATE_VERSION) {
+        info->exists = 1;
+        while (fscanf(file, "%63s", key) == 1) {
+            if (strcmp(key, "meta_label") == 0) {
+                if (fscanf(file, "%31s", info->label) != 1) info->label[0] = '\0';
+            } else if (strcmp(key, "meta_room") == 0) {
+                if (fscanf(file, "%63s", info->room) != 1) info->room[0] = '\0';
+            } else if (strcmp(key, "meta_play_time_ms") == 0) {
+                fscanf(file, "%lu", &info->play_time_ms);
+            } else if (strcmp(key, "meta_timestamp") == 0) {
+                if (fscanf(file, "%31s", info->timestamp) == 1) {
+                    char time_part[16];
+                    if (fscanf(file, "%15s", time_part) == 1 &&
+                        strlen(info->timestamp) + 1 + strlen(time_part) < sizeof(info->timestamp)) {
+                        strcat(info->timestamp, " ");
+                        strcat(info->timestamp, time_part);
+                    }
+                }
+            } else if (strcmp(key, "player") == 0) {
+                break;
+            }
+        }
+    }
+    fclose(file);
+    if (info->label[0] == '\0') yaat_default_save_slot_label(slot, info->label, sizeof(info->label));
+}
+
+static int yaat_save_script_state(const char *path, const char *slot_label)
 {
     FILE *file;
     int i;
@@ -1779,6 +1900,14 @@ static int yaat_save_script_state(const char *path)
     if (file == 0) return 0;
 
     fprintf(file, "YAAT_SCRIPT_STATE %d\n", YAAT_SAVE_STATE_VERSION);
+    {
+        char timestamp[32];
+        yaat_current_timestamp(timestamp, sizeof(timestamp));
+        fprintf(file, "meta_label %s\n", slot_label != 0 && slot_label[0] != '\0' ? slot_label : "Slot");
+        fprintf(file, "meta_room %s\n", yaat_current_room_id());
+        fprintf(file, "meta_play_time_ms %lu\n", g_animation_clock_ms);
+        fprintf(file, "meta_timestamp %s\n", timestamp);
+    }
     fprintf(file, "player %d %d %d %d %d %s\n", g_player_x, g_player_y,
             g_target_x, g_target_y, g_player_facing_right,
             g_player_animation_id);
@@ -1846,7 +1975,10 @@ static int yaat_load_script_state(const char *path)
     g_saved_runtime_object_count = 0;
 
     while (fscanf(file, "%63s", key) == 1) {
-        if (strcmp(key, "player") == 0) {
+        if (strncmp(key, "meta_", 5) == 0) {
+            char discard[128];
+            fgets(discard, sizeof(discard), file);
+        } else if (strcmp(key, "player") == 0) {
             fscanf(file, "%d %d %d %d %d %63s", &g_player_x, &g_player_y,
                    &g_target_x, &g_target_y, &g_player_facing_right,
                    g_player_animation_id);
@@ -2444,6 +2576,102 @@ static void yaat_draw_script_scene(void)
 }
 
 
+
+static int yaat_save_menu_slot_at(int x, int y)
+{
+    int i;
+    for (i = 0; i < YAAT_SAVE_SLOT_COUNT; ++i) {
+        int row_y = 76 + i * 32;
+        if (x >= 44 && x < 276 && y >= row_y && y < row_y + 26) return i;
+    }
+    return -1;
+}
+
+static void yaat_save_slot_label_for_menu(int slot, char *label, size_t label_size)
+{
+    char key[32];
+    char fallback[32];
+    sprintf(key, "ui.save.slot%d", slot + 1);
+    yaat_default_save_slot_label(slot, fallback, sizeof(fallback));
+    yaat_get_ui_string(key, fallback, label, label_size);
+}
+
+static void yaat_open_save_menu(YaatSaveMenuMode mode)
+{
+    g_save_menu_mode = mode;
+    g_save_menu_selected_slot = 0;
+}
+
+static void yaat_close_save_menu(void)
+{
+    g_save_menu_mode = YAAT_SAVE_MENU_CLOSED;
+}
+
+static void yaat_save_menu_accept(void)
+{
+    char path[64];
+    char label[32];
+    YaatSaveSlotInfo info;
+
+    if (g_save_menu_selected_slot < 0 || g_save_menu_selected_slot >= YAAT_SAVE_SLOT_COUNT) return;
+    yaat_save_slot_path(g_save_menu_selected_slot, path, sizeof(path));
+    if (g_save_menu_mode == YAAT_SAVE_MENU_SAVE) {
+        yaat_save_slot_label_for_menu(g_save_menu_selected_slot, label, sizeof(label));
+        yaat_save_script_state(path, label);
+        yaat_close_save_menu();
+    } else if (g_save_menu_mode == YAAT_SAVE_MENU_LOAD) {
+        yaat_read_save_slot_info(g_save_menu_selected_slot, &info);
+        if (info.exists && yaat_load_script_state(path)) yaat_close_save_menu();
+    }
+}
+
+static void yaat_draw_save_menu(void)
+{
+    int i;
+    char title[32];
+    char prompt[96];
+    char empty[32];
+    char cancel[32];
+
+    yaat_get_ui_string(g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? "ui.save.title" : "ui.load.title",
+                       g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? "Save Game" : "Load Game",
+                       title, sizeof(title));
+    yaat_get_ui_string("ui.save.empty", "Empty", empty, sizeof(empty));
+    yaat_get_ui_string("ui.save.cancel", "Esc: Cancel", cancel, sizeof(cancel));
+
+    yaat_draw_rect(&g_renderer, 28, 38, 264, 164, 0x00000000UL);
+    yaat_draw_rect(&g_renderer, 30, 40, 260, 160, 0x00202030UL);
+    yaat_draw_rect(&g_renderer, 32, 42, 256, 16, 0x00406090UL);
+    yaat_draw_text_block(40, 46, title, 0x00ffffffUL);
+
+    for (i = 0; i < YAAT_SAVE_SLOT_COUNT; ++i) {
+        YaatSaveSlotInfo info;
+        char row[128];
+        char slot_label[32];
+        unsigned long fill = (i == g_save_menu_selected_slot) ? 0x005070a0UL : 0x00303040UL;
+        yaat_read_save_slot_info(i, &info);
+        yaat_save_slot_label_for_menu(i, slot_label, sizeof(slot_label));
+        yaat_draw_rect(&g_renderer, 44, 76 + i * 32, 232, 26, 0x00000000UL);
+        yaat_draw_rect(&g_renderer, 46, 78 + i * 32, 228, 22, fill);
+        if (info.exists) {
+            sprintf(row, "%s  %s", slot_label, info.timestamp[0] != '\0' ? info.timestamp : info.room);
+            yaat_draw_text_block(52, 81 + i * 32, row, 0x00ffffffUL);
+            sprintf(row, "%s  %lu:%02lu", info.room[0] != '\0' ? info.room : yaat_current_room_label(),
+                    info.play_time_ms / 60000UL, (info.play_time_ms / 1000UL) % 60UL);
+            yaat_draw_text_block(52, 90 + i * 32, row, 0x00c0c0c0UL);
+        } else {
+            sprintf(row, "%s  %s", slot_label, empty);
+            yaat_draw_text_block(52, 85 + i * 32, row, 0x00c0c0c0UL);
+        }
+    }
+
+    yaat_get_ui_string(g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? "ui.save.prompt" : "ui.load.prompt",
+                       g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? "Enter/click: Save or overwrite" : "Enter/click: Load",
+                       prompt, sizeof(prompt));
+    yaat_draw_text_block(44, 178, prompt, 0x00ffd060UL);
+    yaat_draw_text_block(190, 178, cancel, 0x00ffd060UL);
+}
+
 static void yaat_render_scene(void)
 {
     if (g_runtime_load.ok) {
@@ -2462,6 +2690,7 @@ static void yaat_render_scene(void)
         yaat_gdi_renderer_clear(&g_renderer, 0x00000000UL);
         yaat_draw_text_block(64, (YAAT_BACKBUFFER_HEIGHT / 2) - 8, g_cutscene_overlay_text, 0x00a0c8ffUL);
     }
+    if (g_save_menu_mode != YAAT_SAVE_MENU_CLOSED) yaat_draw_save_menu();
     yaat_draw_cursor_placeholder();
 }
 
@@ -3206,17 +3435,44 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         }
         break;
     case WM_KEYDOWN:
+        if (g_save_menu_mode != YAAT_SAVE_MENU_CLOSED) {
+            if (w_param == VK_ESCAPE) {
+                yaat_close_save_menu();
+            } else if (w_param == VK_UP) {
+                if (g_save_menu_selected_slot > 0) --g_save_menu_selected_slot;
+            } else if (w_param == VK_DOWN) {
+                if (g_save_menu_selected_slot < YAAT_SAVE_SLOT_COUNT - 1) ++g_save_menu_selected_slot;
+            } else if (w_param == VK_RETURN || w_param == VK_SPACE) {
+                yaat_save_menu_accept();
+            } else {
+                break;
+            }
+            InvalidateRect(window, 0, FALSE);
+            return 0;
+        }
         if (w_param == VK_RETURN && (GetKeyState(VK_MENU) & 0x8000)) {
             if ((l_param & 0x40000000L) != 0) return 0;
             yaat_toggle_fullscreen(window);
             return 0;
         }
+#if defined(_DEBUG) || defined(YAAT_DEBUG)
         if ((GetKeyState(VK_CONTROL) & 0x8000) && w_param == 'S') {
-            yaat_save_script_state(YAAT_SAVE_PATH);
+            yaat_save_script_state(YAAT_SAVE_PATH, "Slot1");
             return 0;
         }
         if ((GetKeyState(VK_CONTROL) & 0x8000) && w_param == 'L') {
             yaat_load_script_state(YAAT_SAVE_PATH);
+            InvalidateRect(window, 0, FALSE);
+            return 0;
+        }
+#endif
+        if (w_param == VK_F5) {
+            yaat_open_save_menu(YAAT_SAVE_MENU_SAVE);
+            InvalidateRect(window, 0, FALSE);
+            return 0;
+        }
+        if (w_param == VK_F9) {
+            yaat_open_save_menu(YAAT_SAVE_MENU_LOAD);
             InvalidateRect(window, 0, FALSE);
             return 0;
         }
@@ -3228,11 +3484,28 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         InvalidateRect(window, 0, FALSE);
         return 0;
     case WM_LBUTTONDOWN:
+        if (g_save_menu_mode != YAAT_SAVE_MENU_CLOSED) {
+            int backbuffer_x;
+            int backbuffer_y;
+            if (yaat_client_to_backbuffer(window, (int)(short)LOWORD(l_param),
+                                          (int)(short)HIWORD(l_param),
+                                          &backbuffer_x, &backbuffer_y)) {
+                int slot = yaat_save_menu_slot_at(backbuffer_x, backbuffer_y);
+                if (slot >= 0) {
+                    g_save_menu_selected_slot = slot;
+                    yaat_save_menu_accept();
+                } else {
+                    yaat_close_save_menu();
+                }
+            }
+            InvalidateRect(window, 0, FALSE); return 0;
+        }
         if (g_dialogue_visible) g_dialogue_visible = 0;
         else yaat_set_target_from_client(window, (int)(short)LOWORD(l_param),
                                          (int)(short)HIWORD(l_param), 0);
         InvalidateRect(window, 0, FALSE); return 0;
     case WM_LBUTTONDBLCLK:
+        if (g_save_menu_mode != YAAT_SAVE_MENU_CLOSED) return 0;
         if (g_dialogue_visible) g_dialogue_visible = 0;
         else yaat_set_target_from_client(window, (int)(short)LOWORD(l_param),
                                          (int)(short)HIWORD(l_param), 1);
