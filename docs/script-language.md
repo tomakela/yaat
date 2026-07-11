@@ -373,7 +373,7 @@ Runtime dispatch uses this order:
 
 ### Inventory item scripts and combinations
 
-Inventory behavior can live in `game/scripts/inventory.yaat`. Inventory items can also opt into a script by setting `script=<path>` in `game/inventory/items.ini`; paths are resolved from the `game/` directory. Top-level `object` blocks in those scripts are treated as inventory item definitions, so their IDs should match item IDs from `items.ini`.
+Inventory behavior can live in `game/scripts/inventory.yaat`. Inventory items can also opt into a script by setting `script=<path>` in `game/inventory/items.ini`; paths are resolved from the `game/` directory. Top-level `object` blocks in those scripts are treated as inventory item definitions, so their IDs should match item IDs from `items.ini`. The parser stores those top-level objects in an internal synthetic room for dispatch; that room ID is an implementation detail and scripts should not reference it.
 
 ```text
 object fixed_key {
@@ -476,6 +476,8 @@ drop brass_key brass_key
 ### remove_inventory
 
 Remove an item from inventory if the player has it. The runtime also clears the selected inventory item when it removes the selected item. Missing items are ignored.
+
+Shared behavior note: `remove_inventory` and `consume` use the same inventory-removal behavior. `drop` also removes the inventory item through that behavior, but only in its dedicated move-to-room command path where the target room object is shown after the item is present and removed.
 
 ```text
 remove_inventory <item>

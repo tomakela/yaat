@@ -2930,7 +2930,7 @@ static void yaat_execute_commands(int first, int count)
                 yaat_remove_inventory(cmd->a);
                 if (entity) entity->visible = 1;
             }
-        } else if (cmd->kind == YAAT_CMD_DROP || cmd->kind == YAAT_CMD_REMOVE_INVENTORY || cmd->kind == YAAT_CMD_CONSUME) {
+        } else if (cmd->kind == YAAT_CMD_REMOVE_INVENTORY || cmd->kind == YAAT_CMD_CONSUME) {
             yaat_remove_inventory(cmd->a);
         } else if (cmd->kind == YAAT_CMD_HIDE) {
             yaat_set_object_visible(cmd->a, 0);

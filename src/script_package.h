@@ -35,7 +35,8 @@ typedef enum YaatCommandKind {
     YAAT_CMD_SET_PLAYER_VISIBLE,
     YAAT_CMD_DIALOG,
     YAAT_CMD_CHOICE,
-    YAAT_CMD_ANIMATE_OBJECT
+    YAAT_CMD_ANIMATE_OBJECT,
+    YAAT_CMD_COUNT
 } YaatCommandKind;
 
 typedef struct YaatEvent { char name[32]; char item[32]; int first_command; int command_count; } YaatEvent;
