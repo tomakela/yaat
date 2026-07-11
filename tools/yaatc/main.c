@@ -13,6 +13,7 @@ static int validate_package(const YaatScriptPackage *p)
     if (p->room_count < 1) { fprintf(stderr, "yaatc: no rooms found\n"); return 0; }
     for (i = 0; i < p->command_count; ++i) {
         if (!valid_command_kind(p->commands[i].kind)) {
+        if (p->commands[i].kind < YAAT_CMD_SAY || p->commands[i].kind >= YAAT_CMD_COUNT) {
             fprintf(stderr, "yaatc: invalid command kind %d\n", (int)p->commands[i].kind); return 0;
         }
     }
