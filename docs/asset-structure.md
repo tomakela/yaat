@@ -76,7 +76,7 @@ game/
     game.dat
 ```
 
-> Player idle directions (`idle`, `idle_left`, and `idle_right`) share `graphics/sprites/player_idle.bmp` by default. Add direction-specific idle BMPs only when the game config and runtime defaults are updated to reference them consistently.
+> Player idle directions (`idle`, `idle_left`, `idle_right`, `idle_up`, and `idle_down`) share `graphics/sprites/player_idle.bmp` by default. Player walk directions support `walk_left`, `walk_right`, `walk_up`, and `walk_down`; the up/down entries can point at direction-specific BMPs when available, or fall back to idle art during prototyping.
 
 ## Top-level files and folders
 
@@ -196,6 +196,22 @@ image=player_walk_right.bmp
 frames=0,0,32,48;32,0,32,48;64,0,32,48
 fps=8
 ```
+
+Player animation frames in `game.ini` can also use explicit `frameN=` rows:
+
+```ini
+[player.animation.walk_down]
+frame_ms=120
+; path|source_rect x,y,w,h|duration_ms|step_pixels
+frame0=graphics/sprites/player_walk_down.bmp||120|3
+frame1=graphics/sprites/player_walk_down.bmp||120|5
+```
+
+The optional fourth field defines how many pixels that frame advances in the
+main walking direction, allowing footfalls to cover uneven distances instead of
+using the global player speed for every frame. When omitted or set to zero, the
+runtime uses the default player speed.
+
 
 Room objects may also declare a simple data-driven animation directly in
 `objects.ini`. Keep `sprite=` as the first/resting frame so older tools and

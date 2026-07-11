@@ -64,6 +64,7 @@ static int g_path_waypoint_y[YAAT_MAX_PATH_WAYPOINTS];
 static int g_path_waypoint_count;
 static int g_path_waypoint_index;
 static int g_player_facing_right = 1;
+static int g_player_facing_vertical = 1; /* -1 away/up, 1 toward/down, 0 sideways */
 static char g_player_animation_id[YAAT_ASSET_MAX_NAME] = "idle";
 static int g_player_animation_frame;
 static unsigned long g_player_animation_elapsed_ms;
@@ -217,6 +218,9 @@ static void yaat_update_script_timers(void);
 static void yaat_open_save_menu(YaatSaveMenuMode mode);
 static const char *yaat_active_verb(void);
 static void yaat_update_command_feedback(void);
+static const char *yaat_player_walk_animation_for_delta(int dx, int dy);
+static const char *yaat_player_idle_animation(void);
+static int yaat_player_current_step_pixels(void);
 static YaatEntity *yaat_entity_by_id(YaatRoom *room, const char *id);
 static YaatRuntimeObject *yaat_runtime_object_by_id(const char *id);
 static int yaat_dialogue_position_for_speaker(int *dialogue_x, int *dialogue_y);
@@ -1152,10 +1156,8 @@ static void yaat_set_player_target(int x, int y)
     if (!yaat_is_walkable_at(x, y)) {
         return;
     }
-    if (x < g_player_x) {
-        g_player_facing_right = 0;
-    } else if (x > g_player_x) {
-        g_player_facing_right = 1;
+    if (x != g_player_x || y != g_player_y) {
+        (void)yaat_player_walk_animation_for_delta(x - g_player_x, y - g_player_y);
     }
 
     has_walkmask = yaat_room_has_walkmask();
@@ -1526,6 +1528,58 @@ static void yaat_set_player_animation(const char *id)
     g_player_animation_elapsed_ms = 0;
 }
 
+
+static const char *yaat_player_walk_animation_for_delta(int dx, int dy)
+{
+    int abs_dx = dx < 0 ? -dx : dx;
+    int abs_dy = dy < 0 ? -dy : dy;
+
+    if (abs_dy > abs_dx) {
+        g_player_facing_vertical = dy < 0 ? -1 : 1;
+        return dy < 0 ? "walk_up" : "walk_down";
+    }
+    if (dx < 0) {
+        g_player_facing_right = 0;
+        g_player_facing_vertical = 0;
+        return "walk_left";
+    }
+    if (dx > 0) {
+        g_player_facing_right = 1;
+        g_player_facing_vertical = 0;
+        return "walk_right";
+    }
+    if (dy < 0) {
+        g_player_facing_vertical = -1;
+        return "walk_up";
+    }
+    if (dy > 0) {
+        g_player_facing_vertical = 1;
+        return "walk_down";
+    }
+    return g_player_facing_vertical < 0 ? "walk_up" :
+           (g_player_facing_vertical > 0 ? "walk_down" :
+            (g_player_facing_right ? "walk_right" : "walk_left"));
+}
+
+static const char *yaat_player_idle_animation(void)
+{
+    if (g_player_facing_vertical < 0) return "idle_up";
+    if (g_player_facing_vertical > 0) return "idle_down";
+    return g_player_facing_right ? "idle_right" : "idle_left";
+}
+
+static int yaat_player_current_step_pixels(void)
+{
+    YaatAnimationClip *clip;
+    YaatAnimationFrame *frame;
+
+    clip = yaat_player_animation(g_player_animation_id);
+    if (clip == 0 || clip->frame_count <= 0) return YAAT_PLAYER_SPEED_PIXELS;
+    if (g_player_animation_frame >= clip->frame_count) g_player_animation_frame = 0;
+    frame = &clip->frames[g_player_animation_frame];
+    return frame->step_pixels > 0 ? frame->step_pixels : YAAT_PLAYER_SPEED_PIXELS;
+}
+
 static void yaat_draw_player(void)
 {
     const char *animation_id;
@@ -1541,15 +1595,10 @@ static void yaat_draw_player(void)
     double scale;
 
     if (g_player_x != g_target_x || g_player_y != g_target_y) {
-        if (g_target_x < g_player_x) {
-            animation_id = "walk_left";
-        } else if (g_target_x > g_player_x) {
-            animation_id = "walk_right";
-        } else {
-            animation_id = g_player_facing_right ? "walk_right" : "walk_left";
-        }
+        animation_id = yaat_player_walk_animation_for_delta(g_target_x - g_player_x,
+                                                            g_target_y - g_player_y);
     } else {
-        animation_id = g_player_facing_right ? "idle_right" : "idle_left";
+        animation_id = yaat_player_idle_animation();
     }
     yaat_set_player_animation(animation_id);
     clip = yaat_player_animation(g_player_animation_id);
@@ -3537,8 +3586,12 @@ static void yaat_update_player(void)
     }
     dx = g_target_x - g_player_x;
     dy = g_target_y - g_player_y;
-    if (dx > YAAT_PLAYER_SPEED_PIXELS) dx = YAAT_PLAYER_SPEED_PIXELS; else if (dx < -YAAT_PLAYER_SPEED_PIXELS) dx = -YAAT_PLAYER_SPEED_PIXELS;
-    if (dy > YAAT_PLAYER_SPEED_PIXELS) dy = YAAT_PLAYER_SPEED_PIXELS; else if (dy < -YAAT_PLAYER_SPEED_PIXELS) dy = -YAAT_PLAYER_SPEED_PIXELS;
+    yaat_set_player_animation(yaat_player_walk_animation_for_delta(dx, dy));
+    {
+        int step_pixels = yaat_player_current_step_pixels();
+        if (dx > step_pixels) dx = step_pixels; else if (dx < -step_pixels) dx = -step_pixels;
+        if (dy > step_pixels) dy = step_pixels; else if (dy < -step_pixels) dy = -step_pixels;
+    }
     next_x = g_player_x + dx;
     next_y = g_player_y + dy;
     moved = 0;
@@ -3573,14 +3626,7 @@ static void yaat_update_player(void)
 
     moving = moved;
     if (moving) {
-        if (dx < 0) {
-            yaat_set_player_animation("walk_left");
-        } else if (dx > 0) {
-            yaat_set_player_animation("walk_right");
-        } else {
-            yaat_set_player_animation(g_player_facing_right ?
-                                      "walk_right" : "walk_left");
-        }
+        yaat_set_player_animation(yaat_player_walk_animation_for_delta(dx, dy));
         clip = yaat_player_animation(g_player_animation_id);
         if (clip != 0 && clip->frame_count > 1) {
             if (g_player_animation_frame >= clip->frame_count) {
@@ -3600,8 +3646,7 @@ static void yaat_update_player(void)
             }
         }
     } else {
-        yaat_set_player_animation(g_player_facing_right ?
-                                  "idle_right" : "idle_left");
+        yaat_set_player_animation(yaat_player_idle_animation());
     }
     yaat_pending_room_change_maybe_complete();
 }
