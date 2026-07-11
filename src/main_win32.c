@@ -5,6 +5,7 @@
 #include "script_bytecode.h"
 
 #include <stdio.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include "runtime/asset_loader.h"
@@ -27,6 +28,7 @@
 #define YAAT_VERB_BUTTON_HEIGHT 13
 #define YAAT_INVENTORY_SLOT_SIZE 20
 #define YAAT_MAX_RUNTIME_OBJECT_MUTATIONS 64
+#define YAAT_COMMAND_FEEDBACK_MAX 256
 
 typedef struct YaatRuntimeObjectMutation {
     char room_id[YAAT_ASSET_MAX_NAME];
@@ -102,6 +104,18 @@ static int g_script_resume_first;
 static int g_script_resume_count;
 static int g_script_resume_index;
 
+typedef enum YaatHoverTargetKind {
+    YAAT_HOVER_EMPTY = 0,
+    YAAT_HOVER_OBJECT,
+    YAAT_HOVER_HOTSPOT,
+    YAAT_HOVER_INVENTORY
+} YaatHoverTargetKind;
+
+static YaatHoverTargetKind g_hover_target_kind = YAAT_HOVER_EMPTY;
+static char g_hover_target_id[YAAT_ASSET_MAX_NAME];
+static char g_hover_target_name[YAAT_ASSET_MAX_NAME];
+static char g_command_feedback[YAAT_COMMAND_FEEDBACK_MAX];
+
 #define YAAT_SAVE_STATE_VERSION 1
 #define YAAT_SAVE_PATH "yaat_save_state.txt"
 #define YAAT_MAX_SAVED_RUNTIME_OBJECTS (YAAT_MAX_ROOMS * YAAT_ASSET_MAX_OBJECTS)
@@ -155,6 +169,8 @@ static void yaat_click_game(int x, int y, int immediate_room_change);
 static void yaat_pending_room_change_maybe_complete(void);
 static void yaat_pending_interaction_maybe_complete(void);
 static void yaat_update_script_timers(void);
+static const char *yaat_active_verb(void);
+static void yaat_update_command_feedback(void);
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -983,6 +999,70 @@ static YaatRuntimeInventoryItem *yaat_find_runtime_inventory_item(const char *id
     return 0;
 }
 
+
+static const char *yaat_runtime_inventory_item_display_name(const char *id)
+{
+    YaatRuntimeInventoryItem *item = yaat_find_runtime_inventory_item(id);
+    if (item != 0 && item->name[0] != '\0') return item->name;
+    return id != 0 ? id : "";
+}
+
+static const char *yaat_hover_target_display_name(void)
+{
+    return g_hover_target_name[0] != '\0' ? g_hover_target_name : g_hover_target_id;
+}
+
+static void yaat_set_hover_target(YaatHoverTargetKind kind, const char *id,
+                                  const char *name)
+{
+    g_hover_target_kind = kind;
+    yaat_copy(g_hover_target_id, sizeof(g_hover_target_id), id != 0 ? id : "",
+              strlen(id != 0 ? id : ""));
+    yaat_copy(g_hover_target_name, sizeof(g_hover_target_name),
+              (name != 0 && name[0] != '\0') ? name : (id != 0 ? id : ""),
+              strlen((name != 0 && name[0] != '\0') ? name : (id != 0 ? id : "")));
+    yaat_update_command_feedback();
+}
+
+static void yaat_format_command_feedback(const char *verb, const char *object,
+                                         const char *target)
+{
+    char display_verb[32];
+    yaat_copy(display_verb, sizeof(display_verb), verb != 0 ? verb : "walk",
+              strlen(verb != 0 ? verb : "walk"));
+    if (display_verb[0] != '\0') {
+        display_verb[0] = (char)toupper((unsigned char)display_verb[0]);
+    }
+    if (object != 0 && object[0] != '\0' && target != 0 && target[0] != '\0') {
+        sprintf(g_command_feedback, "%s %s with %s",
+                display_verb, object, target);
+    } else if (target != 0 && target[0] != '\0') {
+        sprintf(g_command_feedback, "%s %s",
+                display_verb, target);
+    } else if (object != 0 && object[0] != '\0') {
+        sprintf(g_command_feedback, "%s %s",
+                display_verb, object);
+    } else {
+        sprintf(g_command_feedback, "%s", display_verb);
+    }
+    g_command_feedback[sizeof(g_command_feedback) - 1] = '\0';
+}
+
+static void yaat_update_command_feedback(void)
+{
+    const char *verb = yaat_active_verb();
+    const char *hover_name = yaat_hover_target_display_name();
+    const char *target = g_hover_target_kind != YAAT_HOVER_EMPTY ? hover_name : "";
+
+    if (strcmp(verb, "use") == 0 && g_selected_inventory[0] != '\0') {
+        yaat_format_command_feedback(verb,
+                                     yaat_runtime_inventory_item_display_name(g_selected_inventory),
+                                     target);
+    } else {
+        yaat_format_command_feedback(verb, "", target);
+    }
+}
+
 static const char *yaat_inventory_item_icon_path(YaatRuntimeInventoryItem *item,
                                                  unsigned long elapsed_ms)
 {
@@ -1482,6 +1562,23 @@ static YaatRuntimeHotspot *yaat_runtime_hotspot_at(int x, int y)
             y >= hotspot->y && x < hotspot->x + hotspot->width &&
             y < hotspot->y + hotspot->height) {
             return hotspot;
+        }
+    }
+    return 0;
+}
+
+
+static YaatRuntimeObject *yaat_runtime_object_at(int x, int y)
+{
+    int i;
+
+    if (!g_runtime_load.ok) return 0;
+    for (i = g_runtime_load.room.object_count - 1; i >= 0; --i) {
+        YaatRuntimeObject *object = &g_runtime_load.room.objects[i];
+        if (object->visible && object->width > 0 && object->height > 0 &&
+            x >= object->x && y >= object->y &&
+            x < object->x + object->width && y < object->y + object->height) {
+            return object;
         }
     }
     return 0;
@@ -2064,6 +2161,7 @@ static void yaat_deselect_action(void)
 {
     g_selected_verb[0] = '\0';
     g_selected_inventory[0] = '\0';
+    yaat_update_command_feedback();
 }
 
 static const char *yaat_active_verb(void)
@@ -2363,6 +2461,9 @@ static void yaat_draw_verb_ui(void)
         yaat_draw_rect(&g_renderer, bx + 1, by + 1, YAAT_VERB_BUTTON_WIDTH - 5, YAAT_VERB_BUTTON_HEIGHT - 2, fill);
         yaat_draw_text_block(bx + 4, by + 3, g_verbs[i], 0x00f0f0f0UL);
     }
+    yaat_update_command_feedback();
+    yaat_draw_text_block(164, YAAT_PLAYFIELD_HEIGHT + 28, g_command_feedback, 0x00d8d8e8UL);
+
     for (i = 0; i < g_inventory_count; ++i) {
         int sx = 164 + (i * (YAAT_INVENTORY_SLOT_SIZE + 3));
         unsigned long fill = strcmp(g_inventory[i], g_selected_inventory) == 0 ? 0x00605020UL : 0x00303030UL;
@@ -3023,9 +3124,11 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
         yaat_pending_room_change_clear();
         if (strcmp(g_selected_verb, g_verbs[verb_index]) == 0) {
             yaat_deselect_action();
+            yaat_update_command_feedback();
         } else {
             yaat_copy(g_selected_verb, sizeof(g_selected_verb), g_verbs[verb_index], strlen(g_verbs[verb_index]));
             if (strcmp(g_selected_verb, "use") != 0) g_selected_inventory[0] = '\0';
+            yaat_update_command_feedback();
         }
         return;
     }
@@ -3033,6 +3136,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
     if (inventory_index >= 0) {
         yaat_pending_room_change_clear();
         yaat_click_inventory_item(g_inventory[inventory_index]);
+        yaat_update_command_feedback();
         return;
     }
     hotspot = g_runtime_load.ok ? yaat_runtime_hotspot_at(backbuffer_x, backbuffer_y) : 0;
@@ -3147,6 +3251,8 @@ static void yaat_update_cursor_from_client(HWND window, int client_x, int client
 {
     int backbuffer_x;
     int backbuffer_y;
+    int inventory_index;
+    YaatRuntimeObject *object;
     YaatRuntimeHotspot *hotspot;
     const char *cursor_state;
     LPCSTR win32_cursor;
@@ -3156,7 +3262,22 @@ static void yaat_update_cursor_from_client(HWND window, int client_x, int client
     g_cursor_x = backbuffer_x;
     g_cursor_y = backbuffer_y;
 
-    hotspot = g_runtime_load.ok ? yaat_runtime_hotspot_at(backbuffer_x, backbuffer_y) : 0;
+    inventory_index = yaat_inventory_slot_at(backbuffer_x, backbuffer_y);
+    object = (g_runtime_load.ok && inventory_index < 0) ? yaat_runtime_object_at(backbuffer_x, backbuffer_y) : 0;
+    hotspot = (g_runtime_load.ok && inventory_index < 0 && object == 0) ? yaat_runtime_hotspot_at(backbuffer_x, backbuffer_y) : 0;
+    if (inventory_index >= 0) {
+        const char *item_id = g_inventory[inventory_index];
+        yaat_set_hover_target(YAAT_HOVER_INVENTORY, item_id,
+                              yaat_runtime_inventory_item_display_name(item_id));
+    } else if (object != 0) {
+        yaat_set_hover_target(YAAT_HOVER_OBJECT, object->id,
+                              object->name[0] != '\0' ? object->name : object->id);
+    } else if (hotspot != 0) {
+        yaat_set_hover_target(YAAT_HOVER_HOTSPOT, hotspot->id,
+                              hotspot->name[0] != '\0' ? hotspot->name : hotspot->id);
+    } else {
+        yaat_set_hover_target(YAAT_HOVER_EMPTY, "", "");
+    }
     cursor_state = hotspot != 0 ? hotspot->cursor : "arrow";
     yaat_copy(g_cursor_state, sizeof(g_cursor_state), cursor_state,
               strlen(cursor_state));
