@@ -200,6 +200,13 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_SET_OBJECT_SPRITE;
             parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
             parser_copy(cmd->b, sizeof(cmd->b), sprite->lexeme, sprite->length);
+        } else if (yaat_token_is(token, "animate")) {
+            ScriptToken *animation;
+            token = yaat_advance_token(cursor);
+            animation = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_ANIMATE_OBJECT;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+            parser_copy(cmd->b, sizeof(cmd->b), animation->lexeme, animation->length);
         } else if (yaat_token_is(token, "title_card") || yaat_token_is(token, "cutscene_text")) {
             ScriptToken *text = yaat_advance_token(cursor);
             ScriptToken *duration = yaat_advance_token(cursor);
