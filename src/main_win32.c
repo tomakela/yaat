@@ -1604,7 +1604,7 @@ static int yaat_verb_button_at(int x, int y)
 static int yaat_inventory_slot_at(int x, int y)
 {
     int i;
-    int start_x = 164;
+    int start_x = 8;
     int start_y = YAAT_PLAYFIELD_HEIGHT + 4;
     if (y < start_y || y >= start_y + YAAT_INVENTORY_SLOT_SIZE) return -1;
     for (i = 0; i < g_inventory_count; ++i) {
@@ -2707,6 +2707,41 @@ static void yaat_load_script_file(const char *path)
     }
 }
 
+static int yaat_script_path_already_loaded(char paths[][YAAT_ASSET_MAX_PATH], int count, const char *path)
+{
+    int i;
+    for (i = 0; i < count; ++i) {
+        if (strcmp(paths[i], path) == 0) return 1;
+    }
+    return 0;
+}
+
+static void yaat_load_inventory_item_scripts(void)
+{
+    char loaded[YAAT_ASSET_MAX_INVENTORY_ITEMS][YAAT_ASSET_MAX_PATH];
+    int loaded_count;
+    int i;
+
+    loaded_count = 0;
+    for (i = 0; i < g_runtime_load.inventory.item_count; ++i) {
+        YaatRuntimeInventoryItem *item;
+        char path[YAAT_ASSET_MAX_PATH];
+        item = &g_runtime_load.inventory.items[i];
+        if (item->script[0] == '\0') continue;
+        if (strncmp(item->script, "game/", 5) == 0 || strncmp(item->script, "game\\", 5) == 0) {
+            yaat_copy(path, sizeof(path), item->script, strlen(item->script));
+        } else {
+            yaat_runtime_join_path(path, sizeof(path), "game", item->script);
+        }
+        if (yaat_script_path_already_loaded(loaded, loaded_count, path)) continue;
+        yaat_load_script_file(path);
+        if (loaded_count < YAAT_ASSET_MAX_INVENTORY_ITEMS) {
+            yaat_copy(loaded[loaded_count], sizeof(loaded[loaded_count]), path, strlen(path));
+            ++loaded_count;
+        }
+    }
+}
+
 static void yaat_load_demo(void)
 {
     int room_index;
@@ -2719,6 +2754,7 @@ static void yaat_load_demo(void)
     yaat_load_script_file("rooms/room000_start/script.yaat");
     yaat_load_script_file("rooms/room001_intro/script.yaat");
     yaat_load_script_file("rooms/room002_exit/script.yaat");
+    yaat_load_inventory_item_scripts();
     yaat_load_player_sprite_metadata();
     room_index = g_runtime_load.ok ? yaat_room_index_by_id(g_runtime_load.room.id) : -1;
     if (room_index >= 0) {
@@ -3244,17 +3280,34 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
     return 0;
 }
 
+static YaatEvent *yaat_find_exact_event(YaatEvent *events, int count, const char *name, const char *item)
+{
+    int i;
+    for (i = 0; i < count; ++i) {
+        if (strcmp(events[i].name, name) == 0 &&
+            strcmp(events[i].item, item != 0 ? item : "") == 0) return &events[i];
+    }
+    return 0;
+}
+
 static void yaat_click_inventory_item(const char *item)
 {
     YaatEntity *entity;
     YaatEvent *event;
     if (item == 0 || item[0] == '\0') return;
     yaat_pending_interaction_clear();
+    entity = yaat_entity_by_id_any_room(item);
     if (strcmp(g_selected_verb, "use") == 0) {
+        if (g_selected_inventory[0] != '\0' && strcmp(g_selected_inventory, item) != 0 && entity != 0) {
+            event = yaat_find_exact_event(entity->events, entity->event_count, "use", g_selected_inventory);
+            if (event != 0) {
+                yaat_execute_event(event);
+                return;
+            }
+        }
         yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), item, strlen(item));
         return;
     }
-    entity = yaat_entity_by_id_any_room(item);
     if (entity == 0) return;
     event = yaat_find_event(entity->events, entity->event_count, g_selected_verb, 0);
     if (event == 0 && strcmp(g_selected_verb, "click") != 0) {
