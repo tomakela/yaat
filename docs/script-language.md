@@ -338,8 +338,8 @@ on use brass_key {
 Event meaning:
 
 - `on look`: runs when the player selects the `look` verb and clicks the object, hotspot, or inventory item.
-- `on use`: runs when the player selects the `use` verb and clicks the object or hotspot without a selected inventory item.
-- `on use <item>`: runs when the player selects the `use` verb, selects an inventory item, and then clicks the object or hotspot.
+- `on use`: runs when the player selects the `use` verb and clicks the object, hotspot, or inventory item without a selected inventory item.
+- `on use <item>`: runs when the player selects the `use` verb, selects an inventory item, and then clicks an object, hotspot, or another inventory item. For inventory combinations, `<item>` is the already-selected ingredient and the handler is attached to the target inventory item.
 - `on talk`: runs when the player selects the `talk` verb and clicks the object or hotspot.
 - `on take`: runs when the player selects the `take` verb and clicks the object or hotspot.
 - `on open`: runs when the player selects the `open` verb and clicks the object or hotspot.
@@ -363,11 +363,40 @@ verb5=close
 Runtime dispatch uses this order:
 
 1. If the click is in the verb menu, the runtime updates the selected verb and does not dispatch a script event.
-2. If the click is on an inventory item while `use` is selected, the runtime stores that inventory item as the selected item.
-3. If the click is on a room object or hotspot, the runtime first looks for `on <selected-verb>`.
-4. If `use` has a selected inventory item, the runtime first looks for `on use <item>` before trying plain `on use`.
-5. If the selected verb handler is missing, the runtime falls back to `on click`.
-6. If no matching event exists, no commands run.
+2. If the click is on an inventory item while `use` is selected and no inventory item is selected yet, the runtime stores that inventory item as the selected item.
+3. If the click is on a different inventory item while `use` already has a selected inventory item, the runtime looks for `on use <selected-item>` on the clicked target inventory item.
+4. If the clicked inventory item does not define that exact combination handler, it becomes the newly selected inventory item instead.
+5. If the click is on a room object or hotspot, the runtime first looks for `on <selected-verb>`.
+6. If `use` has a selected inventory item, the runtime first looks for `on use <item>` before trying plain `on use`.
+7. If the selected verb handler is missing, the runtime falls back to `on click`.
+8. If no matching event exists, no commands run.
+
+### Inventory item scripts and combinations
+
+Inventory behavior can live in `game/scripts/inventory.yaat`. Inventory items can also opt into a script by setting `script=<path>` in `game/inventory/items.ini`; paths are resolved from the `game/` directory. Top-level `object` blocks in those scripts are treated as inventory item definitions, so their IDs should match item IDs from `items.ini`.
+
+```text
+object fixed_key {
+  name "Fixed Key"
+
+  on look {
+    say player "The two pieces fit together now."
+  }
+}
+
+object key_teeth {
+  name "Key Teeth"
+
+  on use key_bow {
+    remove_inventory key_bow
+    remove_inventory key_teeth
+    take fixed_key
+    say player "I join the bow and teeth into a complete key."
+  }
+}
+```
+
+In the example, the player selects `use`, clicks `key_bow`, then clicks `key_teeth`. The runtime dispatches `on use key_bow` on `key_teeth`. Combination handlers can spend both ingredients with `remove_inventory` or `consume`, then add the result with `take`.
 
 ## Built-in commands
 
