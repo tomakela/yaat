@@ -314,23 +314,6 @@ static void yaat_parse_entity(YaatScriptPackage *package, YaatScriptCursor *curs
     yaat_match_token(cursor, SCRIPT_TOKEN_RIGHT_BRACE);
 }
 
-static YaatRoom *yaat_parse_inventory_room(YaatScriptPackage *package)
-{
-    int i;
-    YaatRoom *room;
-
-    for (i = 0; i < package->room_count; ++i) {
-        if (strcmp(package->rooms[i].id, "inventory") == 0) return &package->rooms[i];
-    }
-    if (package->room_count >= YAAT_MAX_ROOMS) return 0;
-    room = &package->rooms[package->room_count++];
-    memset(room, 0, sizeof(*room));
-    parser_copy(room->id, sizeof(room->id), "inventory", strlen("inventory"));
-    parser_copy(room->label, sizeof(room->label), "Inventory", strlen("Inventory"));
-    room->color = 0x00101018UL;
-    return room;
-}
-
 static void yaat_parse_room(YaatScriptPackage *package, YaatScriptCursor *cursor)
 {
     YaatRoom *room;
@@ -378,9 +361,8 @@ int yaat_parse_script_text_into(YaatScriptPackage *package, const char *source)
                 yaat_script_package_set_var_value(package, var_name, &value);
             }
         } else if (token->type == SCRIPT_TOKEN_KEYWORD_ROOM) yaat_parse_room(package, &cursor);
-        else if (token->type == SCRIPT_TOKEN_KEYWORD_OBJECT) { YaatRoom *room = yaat_inventory_script_room(package); if (room) yaat_parse_entity(package, &cursor, room, YAAT_ENTITY_OBJECT); }
         else if (token->type == SCRIPT_TOKEN_KEYWORD_OBJECT) {
-            YaatRoom *inventory_room = yaat_parse_inventory_room(package);
+            YaatRoom *inventory_room = yaat_inventory_script_room(package);
             if (inventory_room != 0) yaat_parse_entity(package, &cursor, inventory_room, YAAT_ENTITY_OBJECT);
             else if (yaat_peek(&cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(&cursor); yaat_skip_block(&cursor); }
         }

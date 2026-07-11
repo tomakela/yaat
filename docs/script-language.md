@@ -373,7 +373,7 @@ Runtime dispatch uses this order:
 
 ### Inventory item scripts and combinations
 
-Inventory behavior can live in `game/scripts/inventory.yaat`. Inventory items can also opt into a script by setting `script=<path>` in `game/inventory/items.ini`; paths are resolved from the `game/` directory. Top-level `object` blocks in those scripts are treated as inventory item definitions, so their IDs should match item IDs from `items.ini`.
+Inventory behavior can live in `game/scripts/inventory.yaat`. Inventory items can also opt into a script by setting `script=<path>` in `game/inventory/items.ini`; paths are resolved from the `game/` directory. Top-level `object` blocks in those scripts are treated as inventory item definitions, so their IDs should match item IDs from `items.ini`. The parser stores those top-level objects in an internal synthetic room for dispatch; that room ID is an implementation detail and scripts should not reference it.
 
 ```text
 object fixed_key {
