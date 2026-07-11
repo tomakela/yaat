@@ -477,6 +477,8 @@ drop brass_key brass_key
 
 Remove an item from inventory if the player has it. The runtime also clears the selected inventory item when it removes the selected item. Missing items are ignored.
 
+Shared behavior note: `remove_inventory` and `consume` use the same inventory-removal behavior. `drop` also removes the inventory item through that behavior, but only in its dedicated move-to-room command path where the target room object is shown after the item is present and removed.
+
 ```text
 remove_inventory <item>
 ```
