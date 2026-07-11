@@ -33,6 +33,8 @@ typedef enum YaatCommandKind {
     YAAT_CMD_WAIT,
     YAAT_CMD_MOVE_PLAYER,
     YAAT_CMD_SET_PLAYER_VISIBLE,
+    YAAT_CMD_DIALOG,
+    YAAT_CMD_CHOICE
     YAAT_CMD_ANIMATE_OBJECT
 } YaatCommandKind;
 
