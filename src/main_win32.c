@@ -24,6 +24,9 @@
 #define YAAT_PLAYER_SPEED_PIXELS 4
 #define YAAT_FRAME_TIMER_ID 1
 #define YAAT_FRAME_TIMER_MS 16
+#define YAAT_SPLASH_DURATION_MS 2000
+#define YAAT_SPLASH_TITLE "YAAT"
+#define YAAT_SPLASH_SUBTITLE "Yet Another Adventure Tool"
 #define YAAT_MAX_VERBS 8
 #define YAAT_VERB_BUTTON_WIDTH 50
 #define YAAT_VERB_BUTTON_HEIGHT 13
@@ -120,6 +123,7 @@ static int g_script_resume_active;
 static int g_script_resume_first;
 static int g_script_resume_count;
 static int g_script_resume_index;
+static int g_splash_remaining_ms = YAAT_SPLASH_DURATION_MS;
 
 typedef enum YaatHoverTargetKind {
     YAAT_HOVER_EMPTY = 0,
@@ -206,6 +210,7 @@ static int yaat_load_bmp(YaatBitmap *bitmap, const char *path);
 static int yaat_player_motion_complete(void);
 static void yaat_unload_bitmap(YaatBitmap *bitmap);
 static void yaat_click_game(int x, int y, int immediate_room_change);
+static void yaat_draw_splash_screen(void);
 static void yaat_pending_room_change_maybe_complete(void);
 static void yaat_pending_interaction_maybe_complete(void);
 static void yaat_update_script_timers(void);
@@ -3411,6 +3416,10 @@ static void yaat_draw_save_menu(void)
 
 static void yaat_render_scene(void)
 {
+    if (g_splash_remaining_ms > 0) {
+        yaat_draw_splash_screen();
+        return;
+    }
     if (g_runtime_load.ok) {
         yaat_draw_runtime_room();
     } else if (g_room_count > 0) {
@@ -3430,6 +3439,80 @@ static void yaat_render_scene(void)
     }
     if (g_save_menu_mode != YAAT_SAVE_MENU_CLOSED) yaat_draw_save_menu();
     yaat_draw_cursor_placeholder();
+}
+
+
+static void yaat_draw_text_scaled(int x, int y, const char *text,
+                                  unsigned long color, int scale)
+{
+    int i;
+    int cx = x;
+    int cy = y;
+    int font_ready;
+
+    if (text == 0) return;
+    if (scale < 1) scale = 1;
+    font_ready = g_font_bitmap.pixels != 0 ||
+                 yaat_load_bmp(&g_font_bitmap, YAAT_FONT_PATH);
+
+    for (i = 0; text[i] != '\0' && cy < YAAT_BACKBUFFER_HEIGHT - (YAAT_FONT_CELL_HEIGHT * scale); ++i) {
+        unsigned char ch;
+
+        if (text[i] == '\n' || cx > YAAT_BACKBUFFER_WIDTH - (YAAT_FONT_CELL_WIDTH * scale)) {
+            cx = x;
+            cy += YAAT_FONT_CELL_HEIGHT * scale;
+            if (text[i] == '\n') continue;
+        }
+        ch = (unsigned char)text[i];
+        if (ch != ' ') {
+            if (font_ready) {
+                int glyph_index;
+                int glyph_x;
+                int glyph_y;
+                int row;
+
+                if (ch < YAAT_FONT_GLYPH_FIRST ||
+                    ch >= YAAT_FONT_GLYPH_FIRST + YAAT_FONT_GLYPH_COUNT) {
+                    ch = '?';
+                }
+                glyph_index = (int)ch - YAAT_FONT_GLYPH_FIRST;
+                glyph_x = (glyph_index % YAAT_FONT_COLUMNS) * YAAT_FONT_CELL_WIDTH;
+                glyph_y = (glyph_index / YAAT_FONT_COLUMNS) * YAAT_FONT_CELL_HEIGHT;
+
+                for (row = 0; row < YAAT_FONT_CELL_HEIGHT; ++row) {
+                    int col;
+                    int src_y = glyph_y + row;
+                    for (col = 0; col < YAAT_FONT_CELL_WIDTH; ++col) {
+                        unsigned long pixel = g_font_bitmap.pixels[(src_y * g_font_bitmap.width) + glyph_x + col] & 0x00ffffffUL;
+                        if (pixel != YAAT_FONT_TRANSPARENT) {
+                            yaat_draw_rect(&g_renderer, cx + (col * scale), cy + (row * scale),
+                                           scale, scale, color);
+                        }
+                    }
+                }
+            } else {
+                yaat_draw_rect(&g_renderer, cx, cy, YAAT_FONT_CELL_WIDTH * scale,
+                               YAAT_FONT_CELL_HEIGHT * scale, color);
+            }
+        }
+        cx += YAAT_FONT_CELL_WIDTH * scale;
+    }
+}
+
+static void yaat_draw_splash_screen(void)
+{
+    int title_scale = 5;
+    int subtitle_scale = 2;
+    int title_width = (int)strlen(YAAT_SPLASH_TITLE) * YAAT_FONT_CELL_WIDTH * title_scale;
+    int subtitle_width = (int)strlen(YAAT_SPLASH_SUBTITLE) * YAAT_FONT_CELL_WIDTH * subtitle_scale;
+    int title_x = (YAAT_BACKBUFFER_WIDTH - title_width) / 2;
+    int title_y = (YAAT_BACKBUFFER_HEIGHT / 2) - 40;
+    int subtitle_x = (YAAT_BACKBUFFER_WIDTH - subtitle_width) / 2;
+
+    yaat_gdi_renderer_clear(&g_renderer, 0x00000000UL);
+    yaat_draw_text_scaled(title_x + 2, title_y + 2, YAAT_SPLASH_TITLE, 0x00303040UL, title_scale);
+    yaat_draw_text_scaled(title_x, title_y, YAAT_SPLASH_TITLE, 0x00f0f0f0UL, title_scale);
+    yaat_draw_text_scaled(subtitle_x, title_y + 52, YAAT_SPLASH_SUBTITLE, 0x00a0c8ffUL, subtitle_scale);
 }
 
 static void yaat_update_player(void)
@@ -4306,6 +4389,11 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         InvalidateRect(window, 0, FALSE);
         return 0;
     case WM_LBUTTONDOWN:
+        if (g_splash_remaining_ms > 0) {
+            g_splash_remaining_ms = 0;
+            InvalidateRect(window, 0, FALSE);
+            return 0;
+        }
         if (g_save_menu_mode != YAAT_SAVE_MENU_CLOSED) {
             int backbuffer_x;
             int backbuffer_y;
@@ -4329,6 +4417,11 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
                                          (int)(short)HIWORD(l_param), 0);
         InvalidateRect(window, 0, FALSE); return 0;
     case WM_LBUTTONDBLCLK:
+        if (g_splash_remaining_ms > 0) {
+            g_splash_remaining_ms = 0;
+            InvalidateRect(window, 0, FALSE);
+            return 0;
+        }
         if (g_save_menu_mode != YAAT_SAVE_MENU_CLOSED) return 0;
         if (g_dialogue_visible) g_dialogue_visible = 0;
         if (g_dialogue_choice_visible && yaat_handle_dialogue_click(window, (int)(short)LOWORD(l_param), (int)(short)HIWORD(l_param))) { }
@@ -4339,7 +4432,11 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
     case WM_TIMER:
         if (w_param == YAAT_FRAME_TIMER_ID) {
             g_animation_clock_ms += YAAT_FRAME_TIMER_MS;
-            yaat_update_player();
+            if (g_splash_remaining_ms > 0) {
+                g_splash_remaining_ms -= YAAT_FRAME_TIMER_MS;
+                if (g_splash_remaining_ms < 0) g_splash_remaining_ms = 0;
+            }
+            if (g_splash_remaining_ms <= 0) yaat_update_player();
             yaat_update_shake();
             yaat_update_script_timers();
             InvalidateRect(window, 0, FALSE);
