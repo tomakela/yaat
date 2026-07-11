@@ -75,7 +75,7 @@ static int g_runtime_hotspot_count;
 static char g_cursor_state[32] = "arrow";
 static char g_verbs[YAAT_MAX_VERBS][32];
 static int g_verb_count;
-static char g_selected_verb[32] = "look";
+static char g_selected_verb[32];
 static char g_selected_inventory[32];
 static int g_fullscreen;
 static RECT g_windowed_rect;
@@ -1183,6 +1183,8 @@ static void yaat_draw_runtime_room(void)
     int floor_y;
     int background_drawn;
     unsigned long background_color;
+    int dialogue_x;
+    int dialogue_y;
 
     background_color = yaat_hash_color(g_runtime_load.room.background,
                                        0x00d8c7a3UL);
@@ -1264,6 +1266,11 @@ static void yaat_draw_runtime_room(void)
     }
 
     yaat_draw_player();
+    if (g_dialogue_visible && strcmp(g_dialogue_speaker, "player") == 0) {
+        dialogue_x = yaat_clamp_int(g_player_x - 60, 0, YAAT_BACKBUFFER_WIDTH - 120);
+        dialogue_y = yaat_clamp_int(g_player_y - YAAT_PLAYER_HEIGHT - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
+        yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
+    }
     yaat_draw_inventory_bar();
 }
 
@@ -1330,9 +1337,6 @@ static void yaat_add_verb(const char *verb)
 {
     if (verb == 0 || verb[0] == '\0' || g_verb_count >= YAAT_MAX_VERBS) return;
     yaat_copy(g_verbs[g_verb_count], sizeof(g_verbs[g_verb_count]), verb, strlen(verb));
-    if (g_verb_count == 0) {
-        yaat_copy(g_selected_verb, sizeof(g_selected_verb), verb, strlen(verb));
-    }
     ++g_verb_count;
 }
 
@@ -1341,6 +1345,7 @@ static void yaat_load_default_verbs(void)
     g_verb_count = 0;
     yaat_add_verb("look");
     yaat_add_verb("use");
+    yaat_add_verb("read");
     yaat_add_verb("talk");
     yaat_add_verb("take");
     yaat_add_verb("open");
@@ -2045,6 +2050,47 @@ static void yaat_set_object_sprite(const char *id, const char *sprite)
     }
 }
 
+static void yaat_deselect_action(void)
+{
+    g_selected_verb[0] = '\0';
+    g_selected_inventory[0] = '\0';
+}
+
+static const char *yaat_active_verb(void)
+{
+    return g_selected_verb[0] != '\0' ? g_selected_verb : "walk";
+}
+
+static void yaat_player_say(const char *text)
+{
+    yaat_copy(g_dialogue_speaker, sizeof(g_dialogue_speaker), "player", strlen("player"));
+    yaat_copy(g_dialogue_text, sizeof(g_dialogue_text), text, strlen(text));
+    g_dialogue_visible = 1;
+}
+
+static void yaat_default_action_sentence(const char *verb)
+{
+    if (verb == 0 || verb[0] == '\0' || strcmp(verb, "walk") == 0) {
+        yaat_player_say("I can't walk there.");
+    } else if (strcmp(verb, "use") == 0) {
+        yaat_player_say("I can't use that.");
+    } else if (strcmp(verb, "look") == 0) {
+        yaat_player_say("I don't see anything special.");
+    } else if (strcmp(verb, "read") == 0) {
+        yaat_player_say("There is nothing to read.");
+    } else if (strcmp(verb, "take") == 0) {
+        yaat_player_say("I can't take that.");
+    } else if (strcmp(verb, "talk") == 0) {
+        yaat_player_say("I can't talk to that.");
+    } else if (strcmp(verb, "open") == 0) {
+        yaat_player_say("I can't open that.");
+    } else if (strcmp(verb, "close") == 0) {
+        yaat_player_say("I can't close that.");
+    } else {
+        yaat_player_say("I can't do that.");
+    }
+}
+
 static YaatEvent *yaat_find_event(YaatEvent *events, int count, const char *name, const char *item)
 {
     int i;
@@ -2080,6 +2126,7 @@ static void yaat_execute_commands(int first, int count)
         } else if (cmd->kind == YAAT_CMD_PICKUP) {
             YaatEntity *entity = yaat_entity_by_id(&g_rooms[g_current_room], cmd->a);
             if (entity) entity->visible = 0;
+            yaat_set_object_visible(cmd->a, 0);
             yaat_take_inventory(cmd->b);
         } else if (cmd->kind == YAAT_CMD_DROP) {
             YaatEntity *entity = yaat_entity_by_id(&g_rooms[g_current_room], cmd->b);
@@ -2129,7 +2176,10 @@ static void yaat_execute_commands(int first, int count)
 
 static void yaat_execute_event(YaatEvent *event)
 {
-    if (event) yaat_execute_commands(event->first_command, event->command_count);
+    if (event) {
+        yaat_execute_commands(event->first_command, event->command_count);
+        yaat_deselect_action();
+    }
 }
 
 static void yaat_runtime_request_room_assets(const char *room_id)
@@ -2299,6 +2349,8 @@ static void yaat_draw_inventory_icons(void)
 static void yaat_draw_script_scene(void)
 {
     int i;
+    int dialogue_x;
+    int dialogue_y;
     YaatRoom *room = &g_rooms[g_current_room];
     yaat_gdi_renderer_clear(&g_renderer, room->color);
     yaat_draw_rect(&g_renderer, g_shake_offset_x, YAAT_PLAYFIELD_HEIGHT - 44 + g_shake_offset_y, YAAT_BACKBUFFER_WIDTH, 44, 0x008a6f48UL);
@@ -2311,6 +2363,11 @@ static void yaat_draw_script_scene(void)
     yaat_draw_rect(&g_renderer, g_target_x - 5 + g_shake_offset_x, g_target_y - 1 + g_shake_offset_y, 11, 3, 0x000f3c70UL);
     yaat_draw_rect(&g_renderer, g_target_x - 1 + g_shake_offset_x, g_target_y - 5 + g_shake_offset_y, 3, 11, 0x000f3c70UL);
     yaat_draw_player();
+    if (g_dialogue_visible && strcmp(g_dialogue_speaker, "player") == 0) {
+        dialogue_x = yaat_clamp_int(g_player_x - 60, 0, YAAT_BACKBUFFER_WIDTH - 120);
+        dialogue_y = yaat_clamp_int(g_player_y - YAAT_PLAYER_HEIGHT - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
+        yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
+    }
     yaat_draw_inventory_bar();
     yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
     yaat_draw_inventory_icons();
@@ -2477,16 +2534,21 @@ static void yaat_runtime_execute_entity_event(const char *entity_id, const char 
     if (entity == 0) return;
 
     (void)script_event;
-    yaat_copy(event_name, sizeof(event_name), g_selected_verb, strlen(g_selected_verb));
+    yaat_copy(event_name, sizeof(event_name), yaat_active_verb(), strlen(yaat_active_verb()));
     if (strcmp(event_name, "use") == 0 && g_selected_inventory[0] != '\0') {
         event = yaat_find_event(entity->events, entity->event_count, event_name, g_selected_inventory);
     } else {
         event = yaat_find_event(entity->events, entity->event_count, event_name, 0);
     }
-    if (event == 0 && strcmp(event_name, "click") != 0) {
+    if (event == 0 && strcmp(event_name, "walk") == 0) {
         event = yaat_find_event(entity->events, entity->event_count, "click", 0);
     }
-    yaat_execute_event(event);
+    if (event != 0) {
+        yaat_execute_event(event);
+    } else {
+        yaat_default_action_sentence(event_name);
+        yaat_deselect_action();
+    }
 }
 
 static int yaat_runtime_ini_hit(const char *path, int x, int y, char *id,
@@ -2658,9 +2720,16 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
                                    "objects.ini");
             if (!yaat_runtime_ini_hit(path, x, y, id, sizeof(id), event_name, sizeof(event_name))) {
                 yaat_copy(id, sizeof(id), object->id, strlen(object->id));
-                yaat_copy(event_name, sizeof(event_name), "on_click", strlen("on_click"));
+                yaat_copy(event_name, sizeof(event_name), object->script_event[0] != '\0' ? object->script_event : "on_click", strlen(object->script_event[0] != '\0' ? object->script_event : "on_click"));
             }
-            yaat_runtime_execute_entity_event(id, event_name);
+            if (strcmp(yaat_active_verb(), "use") == 0 && g_selected_inventory[0] == '\0' && object->inventory_item[0] != '\0') {
+                g_selected_verb[0] = '\0';
+                yaat_runtime_execute_entity_event(id, event_name);
+                yaat_copy(g_selected_verb, sizeof(g_selected_verb), "use", strlen("use"));
+                yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), object->inventory_item, strlen(object->inventory_item));
+            } else {
+                yaat_runtime_execute_entity_event(id, event_name);
+            }
             return 1;
         }
     }
@@ -2708,7 +2777,12 @@ static void yaat_click_inventory_item(const char *item)
     if (event == 0 && strcmp(g_selected_verb, "click") != 0) {
         event = yaat_find_event(entity->events, entity->event_count, "click", 0);
     }
-    yaat_execute_event(event);
+    if (event != 0) {
+        yaat_execute_event(event);
+    } else {
+        yaat_default_action_sentence(g_selected_verb);
+        yaat_deselect_action();
+    }
 }
 
 static void yaat_click_game(int x, int y, int immediate_room_change)
@@ -2725,12 +2799,17 @@ static void yaat_click_game(int x, int y, int immediate_room_change)
         if (e->visible && x >= e->x && y >= e->y && x < e->x + e->w && y < e->y + e->h) {
             YaatEvent *event = 0;
             yaat_pending_interaction_clear();
-            if (strcmp(g_selected_verb, "use") == 0 && g_selected_inventory[0] != '\0') {
+            if (strcmp(yaat_active_verb(), "use") == 0 && g_selected_inventory[0] != '\0') {
                 event = yaat_find_event(e->events, e->event_count, g_selected_verb, g_selected_inventory);
             }
-            if (!event) event = yaat_find_event(e->events, e->event_count, g_selected_verb, 0);
-            if (!event && strcmp(g_selected_verb, "click") != 0) event = yaat_find_event(e->events, e->event_count, "click", 0);
-            yaat_execute_event(event);
+            if (!event) event = yaat_find_event(e->events, e->event_count, yaat_active_verb(), 0);
+            if (!event && strcmp(yaat_active_verb(), "walk") == 0) event = yaat_find_event(e->events, e->event_count, "click", 0);
+            if (event != 0) {
+                yaat_execute_event(event);
+            } else {
+                yaat_default_action_sentence(yaat_active_verb());
+                yaat_deselect_action();
+            }
             return;
         }
     }
@@ -2874,8 +2953,12 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
     if (verb_index >= 0) {
         yaat_pending_interaction_clear();
         yaat_pending_room_change_clear();
-        yaat_copy(g_selected_verb, sizeof(g_selected_verb), g_verbs[verb_index], strlen(g_verbs[verb_index]));
-        if (strcmp(g_selected_verb, "use") != 0) g_selected_inventory[0] = '\0';
+        if (strcmp(g_selected_verb, g_verbs[verb_index]) == 0) {
+            yaat_deselect_action();
+        } else {
+            yaat_copy(g_selected_verb, sizeof(g_selected_verb), g_verbs[verb_index], strlen(g_verbs[verb_index]));
+            if (strcmp(g_selected_verb, "use") != 0) g_selected_inventory[0] = '\0';
+        }
         return;
     }
     inventory_index = yaat_inventory_slot_at(backbuffer_x, backbuffer_y);
@@ -2972,6 +3055,15 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
 
     yaat_pending_interaction_clear();
     yaat_pending_room_change_clear();
+    if (g_selected_verb[0] != '\0') {
+        yaat_default_action_sentence(g_selected_verb);
+        yaat_deselect_action();
+        return;
+    }
+    if (!yaat_is_walkable_at(backbuffer_x, yaat_clamp_int(backbuffer_y, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1))) {
+        yaat_default_action_sentence("walk");
+        return;
+    }
     if (backbuffer_x < g_player_x) {
         g_player_facing_right = 0;
     } else if (backbuffer_x > g_player_x) {

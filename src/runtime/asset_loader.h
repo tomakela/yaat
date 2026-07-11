@@ -48,6 +48,8 @@ typedef struct YaatRuntimeObject {
     int has_walk_x;
     int has_walk_y;
     int visible;
+    char inventory_item[YAAT_ASSET_MAX_NAME];
+    char script_event[YAAT_ASSET_MAX_NAME];
     YaatTransparency transparency;
     int transparent_color_enabled;
     unsigned long transparent_color;
