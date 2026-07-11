@@ -67,6 +67,9 @@ static int g_inventory_count;
 static char g_dialogue_speaker[32];
 static char g_dialogue_text[YAAT_TEXT_MAX];
 static int g_dialogue_visible;
+static int g_dialogue_choice_visible;
+static YaatRuntimeDialog g_active_dialog;
+static char g_active_dialog_node[YAAT_ASSET_MAX_NAME];
 static YaatRuntimeLoadResult g_runtime_load;
 static YaatAssetStore g_asset_store;
 static YaatAssetStore g_runtime_asset_store;
@@ -2112,8 +2115,113 @@ static YaatEvent *yaat_find_event(YaatEvent *events, int count, const char *name
 
 static void yaat_runtime_request_room_assets(const char *room_id);
 static void yaat_enter_room(int room_index);
+static void yaat_execute_event(YaatEvent *event);
+static int yaat_client_to_backbuffer(HWND window, int client_x, int client_y,
+                                     int *backbuffer_x, int *backbuffer_y);
 
 #define YAAT_MAX_SCRIPT_CALL_DEPTH 16
+
+
+static void yaat_dialogue_hide_choices(void)
+{
+    g_dialogue_choice_visible = 0;
+    g_active_dialog_node[0] = '\0';
+}
+
+static void yaat_dialogue_show_node(const char *node_id)
+{
+    YaatRuntimeDialogNode *node;
+    if (node_id == 0 || strcmp(node_id, "end") == 0) {
+        yaat_dialogue_hide_choices();
+        return;
+    }
+    node = yaat_runtime_dialog_find_node(&g_active_dialog, node_id);
+    if (node == 0) {
+        yaat_dialogue_hide_choices();
+        return;
+    }
+    yaat_copy(g_active_dialog_node, sizeof(g_active_dialog_node), node->id, strlen(node->id));
+    if (node->speaker[0] != '\0') yaat_copy(g_dialogue_speaker, sizeof(g_dialogue_speaker), node->speaker, strlen(node->speaker));
+    else yaat_copy(g_dialogue_speaker, sizeof(g_dialogue_speaker), "player", strlen("player"));
+    yaat_copy(g_dialogue_text, sizeof(g_dialogue_text), node->text, strlen(node->text));
+    g_dialogue_visible = 1;
+    g_dialogue_choice_visible = node->choice_count > 0;
+    if (!g_dialogue_choice_visible && node->next[0] != '\0') yaat_dialogue_show_node(node->next);
+}
+
+static void yaat_start_dialogue(const char *dialog_id)
+{
+    if (yaat_runtime_load_dialog_from_store(&g_asset_store, dialog_id, &g_active_dialog) ||
+        yaat_runtime_load_dialog_from_store(&g_runtime_asset_store, dialog_id, &g_active_dialog)) {
+        yaat_dialogue_show_node("start");
+    }
+}
+
+static void yaat_select_dialogue_choice(const char *choice_id)
+{
+    YaatRuntimeDialogNode *choice;
+    YaatEvent *event;
+    choice = yaat_runtime_dialog_find_choice(&g_active_dialog, choice_id);
+    if (choice == 0) return;
+    if (choice->reply[0] != '\0') {
+        YaatRuntimeDialogNode *node;
+        node = yaat_runtime_dialog_find_node(&g_active_dialog, g_active_dialog_node);
+        if (node != 0 && node->speaker[0] != '\0') yaat_copy(g_dialogue_speaker, sizeof(g_dialogue_speaker), node->speaker, strlen(node->speaker));
+        else yaat_copy(g_dialogue_speaker, sizeof(g_dialogue_speaker), "player", strlen("player"));
+        yaat_copy(g_dialogue_text, sizeof(g_dialogue_text), choice->reply, strlen(choice->reply));
+        g_dialogue_visible = 1;
+    }
+    event = yaat_find_event(g_global_events, g_global_event_count,
+                            choice->event[0] != '\0' ? choice->event : "dialog_choice",
+                            choice->id);
+    if (event != 0) yaat_execute_event(event);
+    if (choice->next[0] != '\0') yaat_dialogue_show_node(choice->next);
+    else yaat_dialogue_hide_choices();
+}
+
+static int yaat_dialogue_choice_at(int x, int y)
+{
+    YaatRuntimeDialogNode *node;
+    int i;
+    if (!g_dialogue_choice_visible) return -1;
+    node = yaat_runtime_dialog_find_node(&g_active_dialog, g_active_dialog_node);
+    if (node == 0) return -1;
+    for (i = 0; i < node->choice_count; ++i) {
+        int top;
+        top = YAAT_PLAYFIELD_HEIGHT + 22 + (i * 12);
+        if (x >= 8 && x < YAAT_BACKBUFFER_WIDTH - 8 && y >= top && y < top + 10) return i;
+    }
+    return -1;
+}
+
+static int yaat_handle_dialogue_click(HWND window, int client_x, int client_y)
+{
+    int x, y, choice_index;
+    YaatRuntimeDialogNode *node;
+    if (!yaat_client_to_backbuffer(window, client_x, client_y, &x, &y)) return 0;
+    choice_index = yaat_dialogue_choice_at(x, y);
+    if (choice_index < 0) return 0;
+    node = yaat_runtime_dialog_find_node(&g_active_dialog, g_active_dialog_node);
+    if (node == 0) return 0;
+    yaat_select_dialogue_choice(node->choice_ids[choice_index]);
+    return 1;
+}
+
+static void yaat_draw_dialogue_choices(void)
+{
+    YaatRuntimeDialogNode *node;
+    int i;
+    if (!g_dialogue_choice_visible) return;
+    node = yaat_runtime_dialog_find_node(&g_active_dialog, g_active_dialog_node);
+    if (node == 0) return;
+    for (i = 0; i < node->choice_count; ++i) {
+        YaatRuntimeDialogNode *choice;
+        const char *text;
+        choice = yaat_runtime_dialog_find_choice(&g_active_dialog, node->choice_ids[i]);
+        text = choice != 0 && choice->text[0] != '\0' ? choice->text : node->choice_ids[i];
+        yaat_draw_text_block(12, YAAT_PLAYFIELD_HEIGHT + 22 + (i * 12), text, 0x00a0d8ffUL);
+    }
+}
 
 static void yaat_execute_commands(int first, int count)
 {
@@ -2181,6 +2289,10 @@ static void yaat_execute_commands(int first, int count)
             g_target_y = g_player_y;
         } else if (cmd->kind == YAAT_CMD_SET_PLAYER_VISIBLE) {
             g_player_visible = cmd->bool_value != 0;
+        } else if (cmd->kind == YAAT_CMD_DIALOG) {
+            yaat_start_dialogue(cmd->a);
+        } else if (cmd->kind == YAAT_CMD_CHOICE) {
+            yaat_select_dialogue_choice(cmd->a);
         } else if (cmd->kind == YAAT_CMD_IF) {
             YaatValue value;
             int matched;
@@ -2458,6 +2570,7 @@ static void yaat_render_scene(void)
         yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_speaker, 0x00ffd060UL);
         yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_text, 0x00f0f0f0UL);
     }
+    yaat_draw_dialogue_choices();
     if (g_cutscene_overlay_visible) {
         yaat_gdi_renderer_clear(&g_renderer, 0x00000000UL);
         yaat_draw_text_block(64, (YAAT_BACKBUFFER_HEIGHT / 2) - 8, g_cutscene_overlay_text, 0x00a0c8ffUL);
@@ -3228,12 +3341,14 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         InvalidateRect(window, 0, FALSE);
         return 0;
     case WM_LBUTTONDOWN:
-        if (g_dialogue_visible) g_dialogue_visible = 0;
+        if (g_dialogue_choice_visible && yaat_handle_dialogue_click(window, (int)(short)LOWORD(l_param), (int)(short)HIWORD(l_param))) { }
+        else if (g_dialogue_visible) { g_dialogue_visible = 0; yaat_dialogue_hide_choices(); }
         else yaat_set_target_from_client(window, (int)(short)LOWORD(l_param),
                                          (int)(short)HIWORD(l_param), 0);
         InvalidateRect(window, 0, FALSE); return 0;
     case WM_LBUTTONDBLCLK:
-        if (g_dialogue_visible) g_dialogue_visible = 0;
+        if (g_dialogue_choice_visible && yaat_handle_dialogue_click(window, (int)(short)LOWORD(l_param), (int)(short)HIWORD(l_param))) { }
+        else if (g_dialogue_visible) { g_dialogue_visible = 0; yaat_dialogue_hide_choices(); }
         else yaat_set_target_from_client(window, (int)(short)LOWORD(l_param),
                                          (int)(short)HIWORD(l_param), 1);
         InvalidateRect(window, 0, FALSE); return 0;

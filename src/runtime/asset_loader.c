@@ -525,6 +525,102 @@ int yaat_runtime_animation_frame_index(const int *timing_ms, int frame_count,
     return frame_count - 1;
 }
 
+
+static void yaat_parse_dialog_choices(YaatRuntimeDialogNode *node, const char *value)
+{
+    char copy[YAAT_LINE_MAX];
+    char *part;
+    if (node == 0 || value == 0) return;
+    node->choice_count = 0;
+    yaat_copy_string(copy, sizeof(copy), value);
+    part = strtok(copy, ",;");
+    while (part != 0 && node->choice_count < YAAT_ASSET_MAX_DIALOG_CHOICES) {
+        part = yaat_trim(part);
+        if (part[0] != '\0') {
+            yaat_copy_string(node->choice_ids[node->choice_count],
+                             YAAT_ASSET_MAX_NAME, part);
+            ++node->choice_count;
+        }
+        part = strtok(0, ",;");
+    }
+}
+
+YaatRuntimeDialogNode *yaat_runtime_dialog_find_node(YaatRuntimeDialog *dialog,
+                                                     const char *node_id)
+{
+    int i;
+    if (dialog == 0 || node_id == 0 || node_id[0] == '\0') return 0;
+    for (i = 0; i < dialog->node_count; ++i) {
+        if (strcmp(dialog->nodes[i].id, node_id) == 0) return &dialog->nodes[i];
+    }
+    return 0;
+}
+
+YaatRuntimeDialogNode *yaat_runtime_dialog_find_choice(YaatRuntimeDialog *dialog,
+                                                       const char *choice_id)
+{
+    return yaat_runtime_dialog_find_node(dialog, choice_id);
+}
+
+int yaat_runtime_load_dialog_from_store(YaatAssetStore *store,
+                                        const char *dialog_id,
+                                        YaatRuntimeDialog *dialog)
+{
+    YaatAssetBuffer buffer;
+    YaatIniReader reader;
+    char path[YAAT_ASSET_MAX_PATH];
+    char filename[YAAT_ASSET_MAX_PATH];
+    char line[YAAT_LINE_MAX];
+    YaatRuntimeDialogNode *node;
+
+    if (dialog == 0) return 0;
+    memset(dialog, 0, sizeof(*dialog));
+    if (dialog_id == 0 || dialog_id[0] == '\0' || strstr(dialog_id, "..") != 0 ||
+        strchr(dialog_id, '/') != 0 || strchr(dialog_id, '\\') != 0) return 0;
+    yaat_copy_string(dialog->id, sizeof(dialog->id), dialog_id);
+    yaat_copy_string(filename, sizeof(filename), dialog_id);
+    if (strstr(filename, ".ini") == 0) {
+        strncat(filename, ".ini", sizeof(filename) - 1 - strlen(filename));
+    }
+    yaat_join_path(path, sizeof(path), "dialogs", filename);
+    if (!yaat_asset_store_load(store, path, &buffer)) return 0;
+
+    reader.data = (const char *)buffer.data;
+    reader.size = buffer.size;
+    reader.offset = 0;
+    node = 0;
+    while (yaat_ini_read_line(&reader, line, sizeof(line))) {
+        char *text;
+        char *equals;
+        text = yaat_trim(line);
+        if (text[0] == '\0' || text[0] == ';' || text[0] == '#') continue;
+        if (text[0] == '[') {
+            char *close = strchr(text, ']');
+            node = 0;
+            if (close != 0 && dialog->node_count < YAAT_ASSET_MAX_DIALOG_NODES) {
+                *close = '\0';
+                node = &dialog->nodes[dialog->node_count++];
+                memset(node, 0, sizeof(*node));
+                yaat_copy_string(node->id, sizeof(node->id), yaat_trim(text + 1));
+            }
+            continue;
+        }
+        if (node == 0) continue;
+        equals = strchr(text, '=');
+        if (equals == 0) continue;
+        *equals = '\0';
+        text = yaat_trim(text);
+        equals = yaat_trim(equals + 1);
+        if (strcmp(text, "speaker") == 0) yaat_copy_string(node->speaker, sizeof(node->speaker), equals);
+        else if (strcmp(text, "text") == 0) yaat_copy_string(node->text, sizeof(node->text), equals);
+        else if (strcmp(text, "choices") == 0) yaat_parse_dialog_choices(node, equals);
+        else if (strcmp(text, "reply") == 0) yaat_copy_string(node->reply, sizeof(node->reply), equals);
+        else if (strcmp(text, "next") == 0) yaat_copy_string(node->next, sizeof(node->next), equals);
+        else if (strcmp(text, "event") == 0 || strcmp(text, "script_event") == 0) yaat_copy_string(node->event, sizeof(node->event), equals);
+    }
+    yaat_asset_buffer_free(&buffer);
+    return dialog->node_count > 0;
+}
 void yaat_runtime_load_inventory_from_store(YaatAssetStore *store,
                                             const char *path,
                                             YaatRuntimeInventory *inventory)

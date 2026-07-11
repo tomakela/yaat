@@ -218,6 +218,14 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_MOVE_PLAYER;
             cmd->bool_value = atoi(x->lexeme);
             cmd->int_value = atoi(y->lexeme);
+        } else if (yaat_token_is(token, "dialog")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_DIALOG;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "choice")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_CHOICE;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
         } else if (yaat_token_is(token, "show_player")) {
             cmd->kind = YAAT_CMD_SET_PLAYER_VISIBLE;
             cmd->bool_value = 1;

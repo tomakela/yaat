@@ -32,7 +32,9 @@ typedef enum YaatCommandKind {
     YAAT_CMD_TITLE_CARD,
     YAAT_CMD_WAIT,
     YAAT_CMD_MOVE_PLAYER,
-    YAAT_CMD_SET_PLAYER_VISIBLE
+    YAAT_CMD_SET_PLAYER_VISIBLE,
+    YAAT_CMD_DIALOG,
+    YAAT_CMD_CHOICE
 } YaatCommandKind;
 
 typedef struct YaatEvent { char name[32]; char item[32]; int first_command; int command_count; } YaatEvent;
