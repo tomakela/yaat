@@ -109,7 +109,7 @@ static int rc(FILE *f, YaatCommand *c)
 
 static int valid_command(const YaatCommand *c, const YaatScriptPackage *p)
 {
-    if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_SET_OBJECT_SPRITE) return 0;
+    if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_SET_PLAYER_VISIBLE) return 0;
     if (c->child_count < 0 || c->first_child < 0 ||
         c->else_child_count < 0 || c->first_else_child < 0) return 0;
     if (c->child_count > 0 &&

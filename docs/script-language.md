@@ -546,6 +546,72 @@ Example:
 set_sprite door "assets/rooms/hall/door_open.png"
 ```
 
+
+### title_card / cutscene_text
+
+Show a full black-screen cutscene card with large blue text for a fixed duration. `cutscene_text` is an alias for `title_card`. While the card is visible, the current script event pauses and resumes automatically after the duration expires.
+
+```text
+title_card "text" <duration_ms>
+cutscene_text "text" <duration_ms>
+```
+
+Example:
+
+```text
+title_card "Three days later..." 2500
+```
+
+### wait
+
+Pause the current script event for a fixed duration before continuing with the next command. This lets room-based cutscenes sequence dialogue, actor motion, and automatic room transitions.
+
+```text
+wait <duration_ms>
+```
+
+Example:
+
+```text
+say narrator "The guard steps aside."
+wait 1200
+goto courtyard
+```
+
+### move_player
+
+Place the player at an absolute room position and stop any current walk target. This is intended for room cutscenes and scripted blocking. Coordinates are integer pixels in the room coordinate system.
+
+```text
+move_player <x>, <y>
+```
+
+Example:
+
+```text
+move_player 96, 160
+```
+
+### hide_player / show_player
+
+Hide or show the player sprite. Use these commands for rooms that function as cutscene stages, title rooms, establishing shots, or other scenes where no player should appear.
+
+```text
+hide_player
+show_player
+```
+
+Example:
+
+```text
+on enter {
+  hide_player
+  say narrator "Only the empty hallway remains."
+  wait 2000
+  goto next_room
+}
+```
+
 ### play_sound
 
 Play a sound effect.

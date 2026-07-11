@@ -92,6 +92,15 @@ static char g_pending_room_change_hotspot_id[YAAT_ASSET_MAX_NAME];
 static int g_pending_interaction;
 static int g_pending_interaction_x;
 static int g_pending_interaction_y;
+static int g_player_visible = 1;
+static int g_cutscene_overlay_visible;
+static char g_cutscene_overlay_text[YAAT_TEXT_MAX];
+static int g_cutscene_overlay_remaining_ms;
+static int g_script_wait_remaining_ms;
+static int g_script_resume_active;
+static int g_script_resume_first;
+static int g_script_resume_count;
+static int g_script_resume_index;
 
 #define YAAT_SAVE_STATE_VERSION 1
 #define YAAT_SAVE_PATH "yaat_save_state.txt"
@@ -145,6 +154,7 @@ static void yaat_unload_bitmap(YaatBitmap *bitmap);
 static void yaat_click_game(int x, int y, int immediate_room_change);
 static void yaat_pending_room_change_maybe_complete(void);
 static void yaat_pending_interaction_maybe_complete(void);
+static void yaat_update_script_timers(void);
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -1265,8 +1275,8 @@ static void yaat_draw_runtime_room(void)
                        object->width - 2, object->height - 2, object_color);
     }
 
-    yaat_draw_player();
-    if (g_dialogue_visible && strcmp(g_dialogue_speaker, "player") == 0) {
+    if (g_player_visible) yaat_draw_player();
+    if (g_player_visible && g_dialogue_visible && strcmp(g_dialogue_speaker, "player") == 0) {
         dialogue_x = yaat_clamp_int(g_player_x - 60, 0, YAAT_BACKBUFFER_WIDTH - 120);
         dialogue_y = yaat_clamp_int(g_player_y - YAAT_PLAYER_HEIGHT - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
         yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
@@ -2144,6 +2154,33 @@ static void yaat_execute_commands(int first, int count)
             yaat_move_object(cmd->a, cmd->bool_value, cmd->int_value);
         } else if (cmd->kind == YAAT_CMD_SET_OBJECT_SPRITE) {
             yaat_set_object_sprite(cmd->a, cmd->b);
+        } else if (cmd->kind == YAAT_CMD_TITLE_CARD) {
+            yaat_copy(g_cutscene_overlay_text, sizeof(g_cutscene_overlay_text), cmd->a, strlen(cmd->a));
+            g_cutscene_overlay_visible = 1;
+            g_cutscene_overlay_remaining_ms = yaat_clamp_int(cmd->int_value, 0, 60000);
+            if (g_cutscene_overlay_remaining_ms > 0) {
+                g_script_resume_active = 1;
+                g_script_resume_first = first;
+                g_script_resume_count = count;
+                g_script_resume_index = i + 1;
+                return;
+            }
+        } else if (cmd->kind == YAAT_CMD_WAIT) {
+            g_script_wait_remaining_ms = yaat_clamp_int(cmd->int_value, 0, 60000);
+            if (g_script_wait_remaining_ms > 0) {
+                g_script_resume_active = 1;
+                g_script_resume_first = first;
+                g_script_resume_count = count;
+                g_script_resume_index = i + 1;
+                return;
+            }
+        } else if (cmd->kind == YAAT_CMD_MOVE_PLAYER) {
+            g_player_x = yaat_clamp_int(cmd->bool_value, YAAT_PLAYER_WIDTH / 2, YAAT_BACKBUFFER_WIDTH - (YAAT_PLAYER_WIDTH / 2));
+            g_player_y = yaat_clamp_int(cmd->int_value, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
+            g_target_x = g_player_x;
+            g_target_y = g_player_y;
+        } else if (cmd->kind == YAAT_CMD_SET_PLAYER_VISIBLE) {
+            g_player_visible = cmd->bool_value != 0;
         } else if (cmd->kind == YAAT_CMD_IF) {
             YaatValue value;
             int matched;
@@ -2171,6 +2208,33 @@ static void yaat_execute_commands(int first, int count)
         } else if (cmd->kind == YAAT_CMD_SHAKE) {
             yaat_start_shake(cmd->bool_value, cmd->int_value);
         }
+    }
+}
+
+static void yaat_update_script_timers(void)
+{
+    int first;
+    int count;
+    int index;
+
+    if (g_cutscene_overlay_remaining_ms > 0) {
+        g_cutscene_overlay_remaining_ms -= YAAT_FRAME_TIMER_MS;
+        if (g_cutscene_overlay_remaining_ms <= 0) {
+            g_cutscene_overlay_remaining_ms = 0;
+            g_cutscene_overlay_visible = 0;
+        }
+    }
+    if (g_script_wait_remaining_ms > 0) {
+        g_script_wait_remaining_ms -= YAAT_FRAME_TIMER_MS;
+        if (g_script_wait_remaining_ms < 0) g_script_wait_remaining_ms = 0;
+    }
+    if (g_script_resume_active && g_script_wait_remaining_ms <= 0 &&
+        g_cutscene_overlay_remaining_ms <= 0) {
+        first = g_script_resume_first;
+        count = g_script_resume_count;
+        index = g_script_resume_index;
+        g_script_resume_active = 0;
+        if (index < count) yaat_execute_commands(first + index, count - index);
     }
 }
 
@@ -2362,8 +2426,8 @@ static void yaat_draw_script_scene(void)
     }
     yaat_draw_rect(&g_renderer, g_target_x - 5 + g_shake_offset_x, g_target_y - 1 + g_shake_offset_y, 11, 3, 0x000f3c70UL);
     yaat_draw_rect(&g_renderer, g_target_x - 1 + g_shake_offset_x, g_target_y - 5 + g_shake_offset_y, 3, 11, 0x000f3c70UL);
-    yaat_draw_player();
-    if (g_dialogue_visible && strcmp(g_dialogue_speaker, "player") == 0) {
+    if (g_player_visible) yaat_draw_player();
+    if (g_player_visible && g_dialogue_visible && strcmp(g_dialogue_speaker, "player") == 0) {
         dialogue_x = yaat_clamp_int(g_player_x - 60, 0, YAAT_BACKBUFFER_WIDTH - 120);
         dialogue_y = yaat_clamp_int(g_player_y - YAAT_PLAYER_HEIGHT - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
         yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
@@ -2393,6 +2457,10 @@ static void yaat_render_scene(void)
     if (g_dialogue_visible) {
         yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_speaker, 0x00ffd060UL);
         yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_text, 0x00f0f0f0UL);
+    }
+    if (g_cutscene_overlay_visible) {
+        yaat_gdi_renderer_clear(&g_renderer, 0x00000000UL);
+        yaat_draw_text_block(64, (YAAT_BACKBUFFER_HEIGHT / 2) - 8, g_cutscene_overlay_text, 0x00a0c8ffUL);
     }
     yaat_draw_cursor_placeholder();
 }
@@ -3174,6 +3242,7 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
             g_animation_clock_ms += YAAT_FRAME_TIMER_MS;
             yaat_update_player();
             yaat_update_shake();
+            yaat_update_script_timers();
             InvalidateRect(window, 0, FALSE);
             return 0;
         }
