@@ -391,6 +391,7 @@ static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRunt
     room->height = 200;
     room->near_y = 200;
     room->near_scale = 1.0;
+    room->zmask[0] = '\0';
     room->far_y = 0;
     room->far_scale = 1.0;
 
@@ -447,12 +448,19 @@ static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRunt
             room->far_scale = atof(yaat_trim(equals));
         } else if (strcmp(section, "display") == 0 && strcmp(text, "walkmask") == 0) {
             yaat_copy_string(room->walkmask, sizeof(room->walkmask), yaat_trim(equals));
+        } else if (strcmp(section, "display") == 0 &&
+                   (strcmp(text, "zmask") == 0 || strcmp(text, "depth_mask") == 0)) {
+            yaat_copy_string(room->zmask, sizeof(room->zmask), yaat_trim(equals));
         } else if ((strcmp(section, "audio") == 0 || strcmp(section, "display") == 0) &&
                    strcmp(text, "music") == 0) {
             yaat_copy_string(room->music, sizeof(room->music), yaat_trim(equals));
         }
     }
     yaat_asset_buffer_free(&buffer);
+
+    if (room->zmask[0] == '\0') {
+        yaat_copy_string(room->zmask, sizeof(room->zmask), "zmask.bmp");
+    }
 
     if (room->id[0] == '\0' || room->background[0] == '\0') {
         yaat_format_asset_error_path(error_path, sizeof(error_path), path,
