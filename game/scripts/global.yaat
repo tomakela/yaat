@@ -5,6 +5,6 @@ hotspot missing_asset_note {
   name "Missing Asset Note"
 
   on look {
-    say narrator "Placeholder BMP and WAV paths are present for validator coverage."
+    say narrator "Placeholder BMP and WAV paths are present for validator coverage."  # @scripts.global.1
   }
 }

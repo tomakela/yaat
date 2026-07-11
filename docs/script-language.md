@@ -896,3 +896,16 @@ A first C implementation can parse this language with a small tokenizer and recu
 6. Resolve `goto`, `take`, `hide`, `show`, and `on use <item>` identifiers after parsing or at runtime.
 
 The language intentionally avoids expression precedence, nested function calls, and arbitrary statements so that version 0 can fit a compact engine interpreter.
+
+## Runtime string IDs for localization
+
+Readable script text stays inline in English. Any text-producing command that should be localizable may add a same-line string-id comment after its normal arguments:
+
+```yaat
+say player "The door is locked."  # @intro.locked_door
+title_card "Chapter One" 2500  # @intro.chapter_one
+```
+
+At runtime, YAAT keeps the English literal as the fallback. When the selected runtime language is not English, the engine looks up the `@` id in `game/strings/<lang>.ini`; if the id is absent, or the language file is missing, the inline English text is displayed unchanged. String ids are plain dotted identifiers by convention and should be stable once shipped.
+
+The asset validator reports script text lines that do not have a `# @string.id` label so localizable text can be audited without making labels mandatory during early prototyping.

@@ -74,6 +74,7 @@ static void wc(FILE *f, const YaatCommand *c)
     w16(f, (unsigned)c->kind);
     ws(f, c->a, 96);
     ws(f, c->b, 96);
+    ws(f, c->string_id, 64);
     w16(f, (unsigned)c->bool_value);
     w16(f, (unsigned)c->int_value);
     wv(f, &c->value);
@@ -89,7 +90,7 @@ static int rc(FILE *f, YaatCommand *c)
     unsigned v;
     if (!r16(f, &v)) return 0;
     c->kind = (YaatCommandKind)v;
-    if (!rs(f, c->a, 96) || !rs(f, c->b, 96) || !r16(f, &v)) return 0;
+    if (!rs(f, c->a, 96) || !rs(f, c->b, 96) || !rs(f, c->string_id, 64) || !r16(f, &v)) return 0;
     c->bool_value = (int)v;
     if (!r16(f, &v)) return 0;
     c->int_value = (int)v;
@@ -109,7 +110,6 @@ static int rc(FILE *f, YaatCommand *c)
 
 static int valid_command(const YaatCommand *c, const YaatScriptPackage *p)
 {
-    if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_CHOICE) return 0;
     if (c->kind < YAAT_CMD_SAY || c->kind > YAAT_CMD_ANIMATE_OBJECT) return 0;
     if (c->child_count < 0 || c->first_child < 0 ||
         c->else_child_count < 0 || c->first_else_child < 0) return 0;

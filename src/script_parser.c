@@ -80,6 +80,17 @@ static void yaat_skip_block(YaatScriptCursor *cursor)
 }
 
 
+static void yaat_copy_trailing_string_id(YaatCommand *cmd, YaatScriptCursor *cursor, unsigned line)
+{
+    ScriptToken *label;
+    if (cmd == 0 || cursor == 0) return;
+    label = yaat_peek(cursor);
+    if (label->type == SCRIPT_TOKEN_STRING_ID && label->line == line) {
+        parser_copy(cmd->string_id, sizeof(cmd->string_id), label->lexeme, label->length);
+        yaat_advance_token(cursor);
+    }
+}
+
 static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cursor);
 
 static void yaat_parse_event(YaatScriptPackage *package, YaatScriptCursor *cursor, YaatEvent *events, int *event_count)
@@ -100,6 +111,7 @@ static void yaat_parse_event(YaatScriptPackage *package, YaatScriptCursor *curso
         event->command_count = yaat_parse_commands(package, cursor);
     }
 }
+
 
 static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cursor)
 {
@@ -133,6 +145,7 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_SAY;
             parser_copy(cmd->a, sizeof(cmd->a), speaker->lexeme, speaker->length);
             parser_copy(cmd->b, sizeof(cmd->b), text->lexeme, text->length);
+            yaat_copy_trailing_string_id(cmd, cursor, text->line);
         } else if (yaat_token_is(token, "set")) {
             ScriptToken *name = yaat_advance_token(cursor);
             yaat_match_token(cursor, SCRIPT_TOKEN_EQUAL);
@@ -213,6 +226,7 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_TITLE_CARD;
             parser_copy(cmd->a, sizeof(cmd->a), text->lexeme, text->length);
             cmd->int_value = atoi(duration->lexeme);
+            yaat_copy_trailing_string_id(cmd, cursor, duration->line);
         } else if (yaat_token_is(token, "wait")) {
             token = yaat_advance_token(cursor);
             cmd->kind = YAAT_CMD_WAIT;
@@ -371,6 +385,7 @@ int yaat_parse_script_text_into(YaatScriptPackage *package, const char *source)
             else if (yaat_peek(&cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(&cursor); yaat_skip_block(&cursor); }
         }
         else if (token->type == SCRIPT_TOKEN_KEYWORD_EVENT || yaat_token_is(token, "proc")) yaat_parse_event(package, &cursor, package->global_events, &package->global_event_count);
+        else if (token->type == SCRIPT_TOKEN_STRING_ID) { /* consumed as a trailing text label when on a text command line */ }
         else if (yaat_peek(&cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(&cursor); yaat_skip_block(&cursor); }
     }
     ok = result.diagnostics.count == 0;

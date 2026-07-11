@@ -34,7 +34,7 @@ typedef enum YaatCommandKind {
     YAAT_CMD_MOVE_PLAYER,
     YAAT_CMD_SET_PLAYER_VISIBLE,
     YAAT_CMD_DIALOG,
-    YAAT_CMD_CHOICE
+    YAAT_CMD_CHOICE,
     YAAT_CMD_ANIMATE_OBJECT
 } YaatCommandKind;
 
@@ -44,7 +44,7 @@ typedef struct YaatRoom { char id[32]; char label[64]; unsigned long color; Yaat
 typedef enum YaatValueKind { YAAT_VALUE_BOOL, YAAT_VALUE_INT, YAAT_VALUE_STRING } YaatValueKind;
 typedef enum YaatConditionOp { YAAT_COND_TRUTHY, YAAT_COND_EQ, YAAT_COND_NE, YAAT_COND_LT, YAAT_COND_LTE, YAAT_COND_GT, YAAT_COND_GTE } YaatConditionOp;
 typedef struct YaatValue { YaatValueKind kind; int bool_value; int int_value; char string_value[96]; } YaatValue;
-typedef struct YaatCommand { YaatCommandKind kind; char a[96]; char b[96]; int bool_value; int int_value; YaatValue value; YaatConditionOp condition_op; int first_child; int child_count; int first_else_child; int else_child_count; } YaatCommand;
+typedef struct YaatCommand { YaatCommandKind kind; char a[96]; char b[96]; char string_id[64]; int bool_value; int int_value; YaatValue value; YaatConditionOp condition_op; int first_child; int child_count; int first_else_child; int else_child_count; } YaatCommand;
 typedef struct YaatVar { char name[32]; YaatValue value; } YaatVar;
 
 typedef struct YaatScriptPackage {

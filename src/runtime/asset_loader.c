@@ -682,6 +682,73 @@ void yaat_runtime_load_inventory_from_store(YaatAssetStore *store,
     yaat_asset_buffer_free(&buffer);
 }
 
+void yaat_runtime_state_init(YaatRuntimeState *state)
+{
+    if (state == 0) return;
+    memset(state, 0, sizeof(*state));
+    yaat_copy_string(state->language, sizeof(state->language), "en");
+    yaat_copy_string(state->strings.language, sizeof(state->strings.language), "en");
+}
+
+void yaat_runtime_state_set_language(YaatRuntimeState *state, const char *language)
+{
+    if (state == 0) return;
+    yaat_copy_string(state->language, sizeof(state->language),
+                     language != 0 && language[0] != '\0' ? language : "en");
+}
+
+int yaat_runtime_load_strings_from_store(YaatAssetStore *store, const char *language,
+                                         YaatRuntimeStrings *strings)
+{
+    YaatAssetBuffer buffer;
+    YaatIniReader reader;
+    char path[YAAT_ASSET_MAX_PATH];
+    char line[YAAT_LINE_MAX];
+    const char *lang;
+
+    if (strings == 0) return 0;
+    memset(strings, 0, sizeof(*strings));
+    lang = language != 0 && language[0] != '\0' ? language : "en";
+    yaat_copy_string(strings->language, sizeof(strings->language), lang);
+    sprintf(path, "strings/%s.ini", lang);
+    if (!yaat_asset_store_load(store, path, &buffer)) return 0;
+    reader.data = (const char *)buffer.data;
+    reader.size = buffer.size;
+    reader.offset = 0;
+    while (yaat_ini_read_line(&reader, line, sizeof(line))) {
+        char *text;
+        char *equals;
+        text = yaat_trim(line);
+        if (text[0] == '\0' || text[0] == ';' || text[0] == '#' || text[0] == '[') continue;
+        equals = strchr(text, '=');
+        if (equals == 0 || strings->string_count >= YAAT_ASSET_MAX_STRINGS) continue;
+        *equals = '\0';
+        text = yaat_trim(text);
+        equals = yaat_trim(equals + 1);
+        if (text[0] == '\0') continue;
+        yaat_copy_string(strings->strings[strings->string_count].id,
+                         sizeof(strings->strings[0].id), text);
+        yaat_copy_string(strings->strings[strings->string_count].text,
+                         sizeof(strings->strings[0].text), equals);
+        ++strings->string_count;
+    }
+    yaat_asset_buffer_free(&buffer);
+    return 1;
+}
+
+const char *yaat_runtime_lookup_string(const YaatRuntimeStrings *strings,
+                                       const char *id,
+                                       const char *english_text)
+{
+    int i;
+    if (strings != 0 && id != 0 && id[0] != '\0') {
+        for (i = 0; i < strings->string_count; ++i) {
+            if (strcmp(strings->strings[i].id, id) == 0) return strings->strings[i].text;
+        }
+    }
+    return english_text != 0 ? english_text : "";
+}
+
 static void yaat_parse_rect(const char *value, int *x, int *y, int *width,
                             int *height)
 {
