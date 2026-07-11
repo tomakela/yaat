@@ -11,7 +11,7 @@
 #define YAAT_TEXT_MAX 160
 #define YAAT_MAX_RUNTIME_HOTSPOTS 32
 
-typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT } YaatEntityKind;
+typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT, YAAT_ENTITY_NPC } YaatEntityKind;
 typedef enum YaatCommandKind {
     YAAT_CMD_SAY,
     YAAT_CMD_SET,

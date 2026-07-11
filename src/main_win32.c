@@ -2450,6 +2450,21 @@ static void yaat_draw_inventory_icons(void)
     }
 }
 
+
+static unsigned long yaat_entity_border_color(const YaatEntity *entity)
+{
+    if (entity != 0 && entity->kind == YAAT_ENTITY_OBJECT) return 0x00d4b24cUL;
+    if (entity != 0 && entity->kind == YAAT_ENTITY_NPC) return 0x00935fd4UL;
+    return 0x004e8bc4UL;
+}
+
+static unsigned long yaat_entity_fill_color(const YaatEntity *entity)
+{
+    if (entity != 0 && entity->kind == YAAT_ENTITY_OBJECT) return 0x00ffe090UL;
+    if (entity != 0 && entity->kind == YAAT_ENTITY_NPC) return 0x00d8a8ffUL;
+    return 0x008ec5ffUL;
+}
+
 static void yaat_draw_script_scene(void)
 {
     int i;
@@ -2461,14 +2476,21 @@ static void yaat_draw_script_scene(void)
     for (i = 0; i < room->entity_count; ++i) {
         YaatEntity *e = &room->entities[i];
         if (!e->visible) continue;
-        yaat_draw_rect(&g_renderer, e->x + g_shake_offset_x, e->y + g_shake_offset_y, e->w, e->h, e->kind == YAAT_ENTITY_OBJECT ? 0x00d4b24cUL : 0x004e8bc4UL);
-        yaat_draw_rect(&g_renderer, e->x + 2 + g_shake_offset_x, e->y + 2 + g_shake_offset_y, e->w - 4, e->h - 4, e->kind == YAAT_ENTITY_OBJECT ? 0x00ffe090UL : 0x008ec5ffUL);
+        yaat_draw_rect(&g_renderer, e->x + g_shake_offset_x, e->y + g_shake_offset_y, e->w, e->h, yaat_entity_border_color(e));
+        yaat_draw_rect(&g_renderer, e->x + 2 + g_shake_offset_x, e->y + 2 + g_shake_offset_y, e->w - 4, e->h - 4, yaat_entity_fill_color(e));
     }
     yaat_draw_rect(&g_renderer, g_target_x - 5 + g_shake_offset_x, g_target_y - 1 + g_shake_offset_y, 11, 3, 0x000f3c70UL);
     yaat_draw_rect(&g_renderer, g_target_x - 1 + g_shake_offset_x, g_target_y - 5 + g_shake_offset_y, 3, 11, 0x000f3c70UL);
     if (g_player_visible) yaat_draw_player();
     if (yaat_dialogue_position_for_speaker(&dialogue_x, &dialogue_y)) {
         yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
+    } else if (g_dialogue_visible) {
+        YaatEntity *speaker = yaat_entity_by_id(room, g_dialogue_speaker);
+        if (speaker != 0 && speaker->visible) {
+            dialogue_x = yaat_clamp_int(speaker->x - 42, 0, YAAT_BACKBUFFER_WIDTH - 120);
+            dialogue_y = yaat_clamp_int(speaker->y - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
+            yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
+        }
     }
     yaat_draw_inventory_bar();
     yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
