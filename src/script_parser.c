@@ -200,6 +200,13 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_SET_OBJECT_SPRITE;
             parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
             parser_copy(cmd->b, sizeof(cmd->b), sprite->lexeme, sprite->length);
+        } else if (yaat_token_is(token, "animate")) {
+            ScriptToken *animation;
+            token = yaat_advance_token(cursor);
+            animation = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_ANIMATE_OBJECT;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+            parser_copy(cmd->b, sizeof(cmd->b), animation->lexeme, animation->length);
         } else if (yaat_token_is(token, "title_card") || yaat_token_is(token, "cutscene_text")) {
             ScriptToken *text = yaat_advance_token(cursor);
             ScriptToken *duration = yaat_advance_token(cursor);
@@ -218,6 +225,14 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_MOVE_PLAYER;
             cmd->bool_value = atoi(x->lexeme);
             cmd->int_value = atoi(y->lexeme);
+        } else if (yaat_token_is(token, "dialog")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_DIALOG;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
+        } else if (yaat_token_is(token, "choice")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_CHOICE;
+            parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
         } else if (yaat_token_is(token, "show_player")) {
             cmd->kind = YAAT_CMD_SET_PLAYER_VISIBLE;
             cmd->bool_value = 1;
@@ -262,10 +277,28 @@ static void yaat_parse_entity(YaatScriptPackage *package, YaatScriptCursor *curs
         else if (yaat_token_is(token, "name")) { token = yaat_advance_token(cursor); parser_copy(entity->name, sizeof(entity->name), token->lexeme, token->length); }
         else if (yaat_token_is(token, "at")) { entity->x = atoi(yaat_advance_token(cursor)->lexeme); yaat_match_token(cursor, SCRIPT_TOKEN_COMMA); entity->y = atoi(yaat_advance_token(cursor)->lexeme); }
         else if (yaat_token_is(token, "size")) { entity->w = atoi(yaat_advance_token(cursor)->lexeme); yaat_match_token(cursor, SCRIPT_TOKEN_COMMA); entity->h = atoi(yaat_advance_token(cursor)->lexeme); }
+        else if (yaat_token_is(token, "visible")) { token = yaat_advance_token(cursor); entity->visible = token->type == SCRIPT_TOKEN_KEYWORD_FALSE ? 0 : atoi(token->lexeme) != 0 || token->type == SCRIPT_TOKEN_KEYWORD_TRUE; }
         else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
         else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_STRING || yaat_peek(cursor)->type == SCRIPT_TOKEN_IDENTIFIER || yaat_peek(cursor)->type == SCRIPT_TOKEN_INTEGER) yaat_advance_token(cursor);
     }
     yaat_match_token(cursor, SCRIPT_TOKEN_RIGHT_BRACE);
+}
+
+static YaatRoom *yaat_parse_inventory_room(YaatScriptPackage *package)
+{
+    int i;
+    YaatRoom *room;
+
+    for (i = 0; i < package->room_count; ++i) {
+        if (strcmp(package->rooms[i].id, "inventory") == 0) return &package->rooms[i];
+    }
+    if (package->room_count >= YAAT_MAX_ROOMS) return 0;
+    room = &package->rooms[package->room_count++];
+    memset(room, 0, sizeof(*room));
+    parser_copy(room->id, sizeof(room->id), "inventory", strlen("inventory"));
+    parser_copy(room->label, sizeof(room->label), "Inventory", strlen("Inventory"));
+    room->color = 0x00101018UL;
+    return room;
 }
 
 static void yaat_parse_room(YaatScriptPackage *package, YaatScriptCursor *cursor)
@@ -285,6 +318,7 @@ static void yaat_parse_room(YaatScriptPackage *package, YaatScriptCursor *cursor
         if (token->type == SCRIPT_TOKEN_KEYWORD_ON) yaat_parse_event(package, cursor, room->events, &room->event_count);
         else if (token->type == SCRIPT_TOKEN_KEYWORD_OBJECT) yaat_parse_entity(package, cursor, room, YAAT_ENTITY_OBJECT);
         else if (token->type == SCRIPT_TOKEN_KEYWORD_HOTSPOT) yaat_parse_entity(package, cursor, room, YAAT_ENTITY_HOTSPOT);
+        else if (token->type == SCRIPT_TOKEN_KEYWORD_NPC) yaat_parse_entity(package, cursor, room, YAAT_ENTITY_NPC);
         else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
         else if (yaat_peek(cursor)->type != SCRIPT_TOKEN_RIGHT_BRACE) yaat_advance_token(cursor);
     }
@@ -314,6 +348,11 @@ int yaat_parse_script_text_into(YaatScriptPackage *package, const char *source)
                 yaat_script_package_set_var_value(package, var_name, &value);
             }
         } else if (token->type == SCRIPT_TOKEN_KEYWORD_ROOM) yaat_parse_room(package, &cursor);
+        else if (token->type == SCRIPT_TOKEN_KEYWORD_OBJECT) {
+            YaatRoom *inventory_room = yaat_parse_inventory_room(package);
+            if (inventory_room != 0) yaat_parse_entity(package, &cursor, inventory_room, YAAT_ENTITY_OBJECT);
+            else if (yaat_peek(&cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(&cursor); yaat_skip_block(&cursor); }
+        }
         else if (token->type == SCRIPT_TOKEN_KEYWORD_EVENT || yaat_token_is(token, "proc")) yaat_parse_event(package, &cursor, package->global_events, &package->global_event_count);
         else if (yaat_peek(&cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(&cursor); yaat_skip_block(&cursor); }
     }

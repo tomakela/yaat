@@ -5,11 +5,14 @@
 
 #define YAAT_ASSET_MAX_PATH 128
 #define YAAT_ASSET_MAX_NAME 64
+#define YAAT_ASSET_TEXT_MAX 160
 #define YAAT_ASSET_MAX_OBJECTS 32
 #define YAAT_ASSET_MAX_HOTSPOTS 32
 #define YAAT_ASSET_MAX_INVENTORY_ITEMS 64
 #define YAAT_ASSET_MAX_ANIMATION_FRAMES 16
 #define YAAT_ASSET_MAX_ANIMATIONS 8
+#define YAAT_ASSET_MAX_DIALOG_NODES 32
+#define YAAT_ASSET_MAX_DIALOG_CHOICES 6
 
 typedef struct YaatAssetBuffer {
     unsigned char *data;
@@ -112,6 +115,7 @@ typedef struct YaatRuntimeRoom {
     char background[YAAT_ASSET_MAX_PATH];
     char walkmask[YAAT_ASSET_MAX_PATH];
     char zmask[YAAT_ASSET_MAX_PATH];
+    char music[YAAT_ASSET_MAX_PATH];
     char room_path[YAAT_ASSET_MAX_PATH];
     int width;
     int height;
@@ -142,12 +146,38 @@ typedef struct YaatRuntimeInventory {
     YaatRuntimeInventoryItem items[YAAT_ASSET_MAX_INVENTORY_ITEMS];
 } YaatRuntimeInventory;
 
+typedef struct YaatRuntimeDialogChoice {
+    char id[YAAT_ASSET_MAX_NAME];
+    char text[YAAT_ASSET_TEXT_MAX];
+    char reply[YAAT_ASSET_TEXT_MAX];
+    char next[YAAT_ASSET_MAX_NAME];
+    char event[YAAT_ASSET_MAX_NAME];
+} YaatRuntimeDialogChoice;
+
+typedef struct YaatRuntimeDialogNode {
+    char id[YAAT_ASSET_MAX_NAME];
+    char speaker[YAAT_ASSET_MAX_NAME];
+    char text[YAAT_ASSET_TEXT_MAX];
+    char choice_ids[YAAT_ASSET_MAX_DIALOG_CHOICES][YAAT_ASSET_MAX_NAME];
+    int choice_count;
+    char reply[YAAT_ASSET_TEXT_MAX];
+    char next[YAAT_ASSET_MAX_NAME];
+    char event[YAAT_ASSET_MAX_NAME];
+} YaatRuntimeDialogNode;
+
+typedef struct YaatRuntimeDialog {
+    char id[YAAT_ASSET_MAX_NAME];
+    int node_count;
+    YaatRuntimeDialogNode nodes[YAAT_ASSET_MAX_DIALOG_NODES];
+} YaatRuntimeDialog;
+
 typedef struct YaatRuntimeLoadResult {
     int ok;
     char error[160];
     YaatRuntimePlayer player;
     YaatRuntimeRoom room;
     YaatRuntimeInventory inventory;
+    YaatRuntimeDialog dialog;
 } YaatRuntimeLoadResult;
 
 typedef struct YaatAssetStore {
@@ -164,6 +194,14 @@ void yaat_asset_store_init_loose(YaatAssetStore *store, const char *loose_root);
 int yaat_asset_store_load(YaatAssetStore *store, const char *logical_path,
                           YaatAssetBuffer *buffer);
 void yaat_asset_buffer_free(YaatAssetBuffer *buffer);
+
+int yaat_runtime_load_dialog_from_store(YaatAssetStore *store,
+                                        const char *dialog_id,
+                                        YaatRuntimeDialog *dialog);
+YaatRuntimeDialogNode *yaat_runtime_dialog_find_node(YaatRuntimeDialog *dialog,
+                                                     const char *node_id);
+YaatRuntimeDialogNode *yaat_runtime_dialog_find_choice(YaatRuntimeDialog *dialog,
+                                                       const char *choice_id);
 
 void yaat_runtime_load_inventory_from_store(YaatAssetStore *store,
                                            const char *path,

@@ -12,11 +12,12 @@ EXE = $(BUILD_DIR)/yaat.exe
 WCL386 = wcl386
 WATCOM_CFLAGS = -q -bt=nt -i=src -os -w3
 WATCOM_LDFLAGS = -l=win95
-WATCOM_LIBS = user32.lib gdi32.lib
+WATCOM_LIBS = user32.lib gdi32.lib winmm.lib
 
 WIN32_SOURCES = \
 	src/main_win32.c \
 	src/platform/win32/gdi_renderer.c \
+	src/platform/win32/audio_winmm.c \
 	src/script_tokenizer.c \
 	src/script_parser.c \
 	src/script_package.c \

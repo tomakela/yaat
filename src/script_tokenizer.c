@@ -145,6 +145,7 @@ static ScriptTokenType identifier_type(const char *text, size_t length) {
     KEYWORD("room", SCRIPT_TOKEN_KEYWORD_ROOM);
     KEYWORD("object", SCRIPT_TOKEN_KEYWORD_OBJECT);
     KEYWORD("hotspot", SCRIPT_TOKEN_KEYWORD_HOTSPOT);
+    KEYWORD("npc", SCRIPT_TOKEN_KEYWORD_NPC);
     KEYWORD("var", SCRIPT_TOKEN_KEYWORD_VAR);
     KEYWORD("on", SCRIPT_TOKEN_KEYWORD_ON);
     KEYWORD("if", SCRIPT_TOKEN_KEYWORD_IF);
@@ -314,6 +315,7 @@ const char *script_token_type_name(ScriptTokenType type) {
     case SCRIPT_TOKEN_KEYWORD_ROOM: return "room";
     case SCRIPT_TOKEN_KEYWORD_OBJECT: return "object";
     case SCRIPT_TOKEN_KEYWORD_HOTSPOT: return "hotspot";
+    case SCRIPT_TOKEN_KEYWORD_NPC: return "npc";
     case SCRIPT_TOKEN_KEYWORD_VAR: return "var";
     case SCRIPT_TOKEN_KEYWORD_ON: return "on";
     case SCRIPT_TOKEN_KEYWORD_IF: return "if";
