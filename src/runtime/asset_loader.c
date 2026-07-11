@@ -339,6 +339,10 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path,
             yaat_copy_string(config->rooms_path, sizeof(config->rooms_path), yaat_trim(equals));
         } else if (strcmp(section, "player") == 0 && strcmp(text, "idle") == 0) {
             yaat_copy_string(config->player.idle, sizeof(config->player.idle), yaat_trim(equals));
+        } else if (strcmp(section, "player") == 0 && strcmp(text, "idle_left") == 0) {
+            yaat_copy_string(config->player.idle_left, sizeof(config->player.idle_left), yaat_trim(equals));
+        } else if (strcmp(section, "player") == 0 && strcmp(text, "idle_right") == 0) {
+            yaat_copy_string(config->player.idle_right, sizeof(config->player.idle_right), yaat_trim(equals));
         } else if (strcmp(section, "player") == 0 && strcmp(text, "walk_left") == 0) {
             yaat_copy_string(config->player.walk_left, sizeof(config->player.walk_left), yaat_trim(equals));
         } else if (strcmp(section, "player") == 0 && strcmp(text, "walk_right") == 0) {
@@ -360,6 +364,8 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path,
     yaat_asset_buffer_free(&buffer);
 
     if (config->player.idle[0] == '\0') yaat_copy_string(config->player.idle, sizeof(config->player.idle), "graphics/sprites/player_idle.bmp");
+    if (config->player.idle_left[0] == '\0') yaat_copy_string(config->player.idle_left, sizeof(config->player.idle_left), "graphics/sprites/player_idle_left.bmp");
+    if (config->player.idle_right[0] == '\0') yaat_copy_string(config->player.idle_right, sizeof(config->player.idle_right), "graphics/sprites/player_idle_right.bmp");
     if (config->player.walk_left[0] == '\0') yaat_copy_string(config->player.walk_left, sizeof(config->player.walk_left), "graphics/sprites/player_walk_left.bmp");
     if (config->player.walk_right[0] == '\0') yaat_copy_string(config->player.walk_right, sizeof(config->player.walk_right), "graphics/sprites/player_walk_right.bmp");
     if (config->player.animation_count == 0) yaat_default_player_animations(&config->player);
@@ -738,12 +744,16 @@ static void yaat_parse_animation_frame_value(YaatAnimationClip *clip, int index,
 
 static void yaat_default_player_animations(YaatRuntimePlayer *player)
 {
+    yaat_add_animation_frame(yaat_find_or_add_animation(player, "idle_left"),
+                             player->idle_left);
+    yaat_add_animation_frame(yaat_find_or_add_animation(player, "idle_right"),
+                             player->idle_right);
     yaat_add_animation_frame(yaat_find_or_add_animation(player, "idle"),
-                             "graphics/sprites/player_idle.bmp");
+                             player->idle_right[0] != '\0' ? player->idle_right : player->idle);
     yaat_add_animation_frame(yaat_find_or_add_animation(player, "walk_left"),
-                             "graphics/sprites/player_walk_left.bmp");
+                             player->walk_left);
     yaat_add_animation_frame(yaat_find_or_add_animation(player, "walk_right"),
-                             "graphics/sprites/player_walk_right.bmp");
+                             player->walk_right);
 }
 
 static YaatRuntimeHotspot *yaat_find_or_add_room_hotspot(YaatRuntimeRoom *room,

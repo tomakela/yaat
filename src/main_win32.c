@@ -1114,7 +1114,7 @@ static void yaat_draw_player(void)
             animation_id = g_player_facing_right ? "walk_right" : "walk_left";
         }
     } else {
-        animation_id = "idle";
+        animation_id = g_player_facing_right ? "idle_right" : "idle_left";
     }
     yaat_set_player_animation(animation_id);
     clip = yaat_player_animation(g_player_animation_id);
@@ -2419,7 +2419,8 @@ static void yaat_update_player(void)
             }
         }
     } else {
-        yaat_set_player_animation("idle");
+        yaat_set_player_animation(g_player_facing_right ?
+                                  "idle_right" : "idle_left");
     }
     yaat_pending_room_change_maybe_complete();
 }
