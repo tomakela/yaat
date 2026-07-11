@@ -262,6 +262,7 @@ static void yaat_parse_entity(YaatScriptPackage *package, YaatScriptCursor *curs
         else if (yaat_token_is(token, "name")) { token = yaat_advance_token(cursor); parser_copy(entity->name, sizeof(entity->name), token->lexeme, token->length); }
         else if (yaat_token_is(token, "at")) { entity->x = atoi(yaat_advance_token(cursor)->lexeme); yaat_match_token(cursor, SCRIPT_TOKEN_COMMA); entity->y = atoi(yaat_advance_token(cursor)->lexeme); }
         else if (yaat_token_is(token, "size")) { entity->w = atoi(yaat_advance_token(cursor)->lexeme); yaat_match_token(cursor, SCRIPT_TOKEN_COMMA); entity->h = atoi(yaat_advance_token(cursor)->lexeme); }
+        else if (yaat_token_is(token, "visible")) { token = yaat_advance_token(cursor); entity->visible = token->type == SCRIPT_TOKEN_KEYWORD_FALSE ? 0 : atoi(token->lexeme) != 0 || token->type == SCRIPT_TOKEN_KEYWORD_TRUE; }
         else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
         else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_STRING || yaat_peek(cursor)->type == SCRIPT_TOKEN_IDENTIFIER || yaat_peek(cursor)->type == SCRIPT_TOKEN_INTEGER) yaat_advance_token(cursor);
     }
@@ -285,6 +286,7 @@ static void yaat_parse_room(YaatScriptPackage *package, YaatScriptCursor *cursor
         if (token->type == SCRIPT_TOKEN_KEYWORD_ON) yaat_parse_event(package, cursor, room->events, &room->event_count);
         else if (token->type == SCRIPT_TOKEN_KEYWORD_OBJECT) yaat_parse_entity(package, cursor, room, YAAT_ENTITY_OBJECT);
         else if (token->type == SCRIPT_TOKEN_KEYWORD_HOTSPOT) yaat_parse_entity(package, cursor, room, YAAT_ENTITY_HOTSPOT);
+        else if (token->type == SCRIPT_TOKEN_KEYWORD_NPC) yaat_parse_entity(package, cursor, room, YAAT_ENTITY_NPC);
         else if (yaat_peek(cursor)->type == SCRIPT_TOKEN_LEFT_BRACE) { yaat_advance_token(cursor); yaat_skip_block(cursor); }
         else if (yaat_peek(cursor)->type != SCRIPT_TOKEN_RIGHT_BRACE) yaat_advance_token(cursor);
     }

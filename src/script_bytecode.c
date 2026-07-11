@@ -194,7 +194,7 @@ int yaat_bytecode_read_file(const char *path, YaatScriptPackage *p)
         }
         for (j = 0; j < r->entity_count; ++j) {
             YaatEntity *e = &r->entities[j];
-            if (!r16(f, &v) || v > YAAT_ENTITY_OBJECT) { fclose(f); return 0; }
+            if (!r16(f, &v) || v > YAAT_ENTITY_NPC) { fclose(f); return 0; }
             e->kind = (YaatEntityKind)v;
             if (!rs(f, e->id, 32) || !rs(f, e->name, 64) || !r16(f, &v)) { fclose(f); return 0; }
             e->x = (int)v;
