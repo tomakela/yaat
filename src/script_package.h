@@ -11,7 +11,7 @@
 #define YAAT_TEXT_MAX 160
 #define YAAT_MAX_RUNTIME_HOTSPOTS 32
 
-typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT } YaatEntityKind;
+typedef enum YaatEntityKind { YAAT_ENTITY_HOTSPOT, YAAT_ENTITY_OBJECT, YAAT_ENTITY_NPC } YaatEntityKind;
 typedef enum YaatCommandKind {
     YAAT_CMD_SAY,
     YAAT_CMD_SET,
@@ -32,7 +32,10 @@ typedef enum YaatCommandKind {
     YAAT_CMD_TITLE_CARD,
     YAAT_CMD_WAIT,
     YAAT_CMD_MOVE_PLAYER,
-    YAAT_CMD_SET_PLAYER_VISIBLE
+    YAAT_CMD_SET_PLAYER_VISIBLE,
+    YAAT_CMD_DIALOG,
+    YAAT_CMD_CHOICE
+    YAAT_CMD_ANIMATE_OBJECT
 } YaatCommandKind;
 
 typedef struct YaatEvent { char name[32]; char item[32]; int first_command; int command_count; } YaatEvent;
