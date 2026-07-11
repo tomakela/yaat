@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YAAT HTML5</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#101018; color:#eee; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; }
+  main { text-align:center; }
+  canvas { width:min(96vw, 960px); image-rendering:pixelated; image-rendering:crisp-edges; border:2px solid #505060; background:#000; cursor:none; }
+  p { margin:.6rem 0 0; color:#b8b8c8; font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <canvas id="game" width="320" height="240" aria-label="YAAT placeholder demo"></canvas>
+  <p>Left click playfield to interact. Choose verbs and inventory from the lower bar.</p>
+</main>
+<script>
+(() => {
+'use strict';
+const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4;
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
+const imageCache=new Map();
+function img(path){ if(!imageCache.has(path)){ const im=new Image(); im.src='game/'+path; imageCache.set(path,im);} return imageCache.get(path); }
+function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w|0,h|0); }
+function text(s,x,y,c='#f0e8d0'){ ctx.fillStyle=c; ctx.font='8px monospace'; ctx.textBaseline='top'; ctx.fillText(s,x,y); }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function hashColor(s, fallback){ let h=fallback; for (const ch of s) h=((h*33)^ch.charCodeAt(0))>>>0; return '#'+(h&0xffffff).toString(16).padStart(6,'0'); }
+const verbs=['look','use','talk','take','open','close'];
+const inventoryDefs={ brass_key:{name:'Brass Key', icon:'inventory/icons/brass_key.bmp', description:'A small brass key with worn teeth.'} };
+const rooms={
+  room000_start:{label:'Start Screen',bg:'rooms/room000_start/background.bmp',enter:'Welcome to the YAAT placeholder asset demo.',hotspots:[{id:'start_button',name:'Start Game',x:112,y:128,w:96,h:24,cursor:'use',click(){ play('audio/sfx/start_click.wav'); go('room001_intro',160,180); }}],objects:[]},
+  room001_intro:{label:'Intro Room',bg:'rooms/room001_intro/background.bmp',enter(){ say('narrator', state.vars.intro_seen?'You are back in the quiet intro room.':'You stand in a room drawn only by placeholder data.'); state.vars.intro_seen=true; },hotspots:[
+    {id:'faded_sign',name:'Faded Sign',x:24,y:40,w:80,h:32,cursor:'look',look(){ say('narrator','The sign reads: use the key on the locked door.'); },click(){ this.look(); }},
+    {id:'locked_door',name:'Locked Door',x:268,y:48,w:40,h:112,cursor:'use',walkX:286,walkY:159,look(){ say('player',state.vars.door_locked?'The door is locked. There is a bright brass keyhole.':'The door is unlocked now.'); },use(){ if(state.selectedInv==='brass_key') return useKeyOnDoor(); if(state.vars.door_locked) say('player','It will not open without the right key.'); else go('room002_exit',160,180); },click(){ if(state.vars.door_locked) say('player','Locked. I should use something on it.'); else go('room002_exit',160,180); }}],
+    objects:[{id:'brass_key',name:'Brass Key',sprite:'rooms/room001_intro/objects/brass_key.bmp',x:132,y:148,w:18,h:10,walkX:141,walkY:158,visible(){return !state.vars.took_key;},look(){say('player','A small brass key is lying on the floor.');},click(){takeKey();},take(){takeKey();}}]},
+  room002_exit:{label:'Exit Room',bg:'rooms/room002_exit/background.bmp',enter:'You step through the unlocked door into the exit room.',hotspots:[
+    {id:'back_door',name:'Back Door',x:8,y:48,w:38,h:112,cursor:'use',click(){go('room001_intro',288,180);},look(){say('player','That door leads back to the intro room.');}},
+    {id:'ending_plaque',name:'Ending Plaque',x:112,y:72,w:96,h:48,cursor:'look',look(){say('narrator','The plaque waits for a final click.');},click(){ if(state.vars.demo_complete) say('narrator','The demo is already complete.'); else { state.vars.demo_complete=true; play('audio/sfx/demo_complete.wav'); say('narrator','Demo complete. Placeholder assets and metadata are consistent.'); } }}],
+    objects:[{id:'exit_lamp',name:'Exit Lamp',sprite:'rooms/room002_exit/objects/exit_lamp.bmp',x:236,y:64,w:24,h:48,visible(){return true;},look(){say('player','The lamp uses a placeholder BMP sprite.');},click(){this.look();}}]}
+};
+const state={room:'room000_start',px:160,py:100,tx:160,ty:100,face:1,cx:160,cy:100,verb:'look',selectedInv:'',inv:[],vars:{door_locked:true,intro_seen:false,took_key:false,demo_complete:false},dialog:null,shakeUntil:0,shakeMag:0,pending:null,last:performance.now()};
+function say(speaker,msg){ state.dialog={speaker,msg,t:performance.now()}; }
+function play(path){ const a=new Audio('game/'+path); a.volume=0.7; a.play().catch(()=>{}); }
+function shake(ms,mag){ state.shakeUntil=performance.now()+ms; state.shakeMag=mag; }
+function go(id,x=160,y=180){ state.room=id; state.px=state.tx=x; state.py=state.ty=y; state.selectedInv=''; const e=rooms[id].enter; if(typeof e==='function') e(); else if(e) say('narrator',e); }
+function takeKey(){ if(!state.inv.includes('brass_key')) state.inv.push('brass_key'); state.vars.took_key=true; play('audio/sfx/pickup_key.wav'); say('player','I picked up the brass key.'); }
+function useKeyOnDoor(){ if(state.vars.door_locked){ play('audio/sfx/door_unlock.wav'); shake(350,6); state.vars.door_locked=false; say('player','The brass key turns, and the door unlocks.'); } else say('player','The door is already unlocked.'); }
+function roomItems(){ const r=rooms[state.room]; return [...r.hotspots, ...r.objects.filter(o=> typeof o.visible==='function'?o.visible():o.visible!==false)]; }
+function at(x,y){ const a=roomItems(); for(let i=a.length-1;i>=0;i--){ const o=a[i]; if(x>=o.x&&y>=o.y&&x<o.x+o.w&&y<o.y+o.h) return o; } return null; }
+function walkToObj(o){ const x=o.walkX??clamp(o.x+(o.w>>1),PLAYER_W/2,W-PLAYER_W/2), y=o.walkY??clamp(o.y+o.h-1,PLAYER_H,PLAY_H-1); state.tx=x; state.ty=y; }
+function interact(o){ if(!o) return; if(state.selectedInv){ state.verb='use'; } const verb=state.verb==='take'&&o.click&&!o.take?'click':state.verb; (o[verb]||o.click||o.look||(()=>{})).call(o); if(state.verb!=='look') state.selectedInv=''; }
+function update(){ const dx=state.tx-state.px, dy=state.ty-state.py, d=Math.hypot(dx,dy); if(d>0){ const step=Math.min(SPEED,d); state.px+=dx/d*step; state.py+=dy/d*step; if(dx<0) state.face=0; else if(dx>0) state.face=1; if(d<=SPEED && state.pending){ const p=state.pending; state.pending=null; interact(p); } } }
+function drawBmp(path,x,y,w,h){ const im=img(path); if(im.complete&&im.naturalWidth) ctx.drawImage(im,x,y,w||im.naturalWidth,h||im.naturalHeight); else { rect(x,y,w||24,h||24,hashColor(path,0x2f5f9e)); } }
+function drawPlayer(sx,sy){ const moving=Math.abs(state.px-state.tx)+Math.abs(state.py-state.ty)>0.1; const path=moving?(state.face?'graphics/sprites/player_walk_right.bmp':'graphics/sprites/player_walk_left.bmp'):(state.face?'graphics/sprites/player_idle_right.bmp':'graphics/sprites/player_idle_left.bmp'); const im=img(path); if(im.complete&&im.naturalWidth) ctx.drawImage(im,state.px-im.naturalWidth/2+sx,state.py-im.naturalHeight+sy); else { rect(state.px-11+sx,state.py+7+sy,22,5,'#664f38'); rect(state.px-5+sx,state.py-34+sy,10,10,'#5a3a24'); rect(state.px-6+sx,state.py-25+sy,12,15,'#2f5f9e'); rect(state.px-9+sx,state.py-22+sy,4,12,'#274774'); rect(state.px+5+sx,state.py-22+sy,4,12,'#274774'); rect(state.px-5+sx,state.py-10+sy,4,10,'#1f2430'); rect(state.px+1+sx,state.py-10+sy,4,10,'#1f2430'); } }
+function draw(){ const now=performance.now(); let sx=0,sy=0; if(now<state.shakeUntil){ const m=Math.max(1,Math.round(state.shakeMag*(state.shakeUntil-now)/350)); sx=(Math.random()*m*2-m)|0; sy=(Math.random()*m*2-m)|0; }
+ const r=rooms[state.room]; rect(0,0,W,H,hashColor(r.bg,0xd8c7a3)); drawBmp(r.bg,sx,sy,W,PLAY_H);
+ for(const h of r.hotspots){ rect(h.x+sx,h.y+sy,h.w,h.h,'rgba(240,208,32,.45)'); rect(h.x+1+sx,h.y+1+sy,Math.max(0,h.w-2),Math.max(0,h.h-2),'rgba(192,128,32,.35)'); }
+ for(const o of r.objects){ if(typeof o.visible==='function'&&!o.visible()) continue; drawBmp(o.sprite,o.x+sx,o.y+sy,o.w,o.h); }
+ drawPlayer(sx,sy); drawUI(); drawDialogue(); drawCursor(); }
+function drawUI(){ rect(0,PLAY_H,W,40,'#101018'); verbs.forEach((v,i)=>{ const x=4+(i%3)*50,y=PLAY_H+3+(i/3|0)*15; rect(x,y,48,13,v===state.verb?'#6a5430':'#303040'); text(v,x+5,y+3); }); state.inv.forEach((id,i)=>{ const x=164+i*23,y=PLAY_H+4; rect(x,y,20,20,id===state.selectedInv?'#806020':'#404048'); rect(x+1,y+1,18,18,'#202028'); drawBmp(inventoryDefs[id].icon,x+2,y+2,16,16); }); const hover=state.cy<PLAY_H&&at(state.cx,state.cy); text((state.selectedInv?`use ${inventoryDefs[state.selectedInv].name} with `:state.verb+' ')+(hover?hover.name:''),164,PLAY_H+28,'#d8d0b8'); }
+function drawDialogue(){ if(!state.dialog) return; rect(16,10,288,26,'rgba(0,0,0,.75)'); text(state.dialog.speaker+':',24,16,'#ffe070'); text(state.dialog.msg,24,26,'#fff'); }
+function drawCursor(){ const use=(at(state.cx,state.cy)?.cursor==='use')||state.selectedInv||state.verb==='use'; rect(state.cx,state.cy,2,14,'#000'); rect(state.cx+2,state.cy+2,2,10,'#000'); rect(state.cx+4,state.cy+4,2,8,'#000'); rect(state.cx+6,state.cy+6,2,6,'#000'); rect(state.cx+8,state.cy+8,2,4,'#000'); rect(state.cx+1,state.cy+1,1,11,use?'#ffe070':'#fff'); rect(state.cx+2,state.cy+3,2,7,use?'#ffe070':'#fff'); rect(state.cx+4,state.cy+5,2,5,use?'#ffe070':'#fff'); rect(state.cx+6,state.cy+7,2,3,use?'#ffe070':'#fff'); }
+canvas.addEventListener('mousemove',e=>{ const b=canvas.getBoundingClientRect(); state.cx=clamp((e.clientX-b.left)*W/b.width,0,W-1); state.cy=clamp((e.clientY-b.top)*H/b.height,0,H-1); });
+canvas.addEventListener('click',e=>{ const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ walkToObj(o); state.pending=o; } else { state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); state.pending=null; } });
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+go('room000_start',160,100); loop();
+})();
+</script>
+</body>
+</html>
