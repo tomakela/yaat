@@ -436,3 +436,16 @@ Game/runtime parsers should request files through the runtime archive wrapper an
 must not parse ZIP records directly. Loose development assets may continue to use
 the folder structure documented above until the engine wiring selects a `.dat`
 archive at startup.
+
+## Localized runtime strings
+
+Localized UI and script strings live under `game/strings/` as one INI-style file per language, for example `game/strings/en.ini`, `game/strings/fr.ini`, or `game/strings/de.ini`. The runtime language defaults to `en` and loads `strings/<lang>.ini` through the asset loader.
+
+String files use `id=value` entries without sections:
+
+```ini
+ui.start=Start Game
+intro.locked_door=The door is locked.
+```
+
+Script text should remain readable English inline and may attach a same-line localization id comment such as `# @intro.locked_door`. The localized file overrides the inline text only when the selected language file contains that id; otherwise the engine falls back to the inline English string.

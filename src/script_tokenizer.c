@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 typedef struct ScriptTokenizer {
     const char *start;
@@ -190,6 +191,23 @@ static void scan_string(ScriptTokenizer *tokenizer) {
 }
 
 static void skip_comment(ScriptTokenizer *tokenizer) {
+    while (peek(tokenizer) == ' ' || peek(tokenizer) == '\t') {
+        advance(tokenizer);
+    }
+    if (peek(tokenizer) == '@') {
+        const char *label;
+        size_t length;
+        advance(tokenizer);
+        label = tokenizer->current;
+        while (peek(tokenizer) != '\n' && !at_end(tokenizer) &&
+               !isspace((unsigned char)peek(tokenizer))) {
+            advance(tokenizer);
+        }
+        length = (size_t)(tokenizer->current - label);
+        if (length > 0) {
+            add_sized_token(tokenizer, SCRIPT_TOKEN_STRING_ID, label, length);
+        }
+    }
     while (peek(tokenizer) != '\n' && !at_end(tokenizer)) {
         advance(tokenizer);
     }
@@ -323,6 +341,7 @@ const char *script_token_type_name(ScriptTokenType type) {
     case SCRIPT_TOKEN_KEYWORD_TRUE: return "true";
     case SCRIPT_TOKEN_KEYWORD_FALSE: return "false";
     case SCRIPT_TOKEN_KEYWORD_EVENT: return "event";
+    case SCRIPT_TOKEN_STRING_ID: return "string-id";
     case SCRIPT_TOKEN_EOF: return "EOF";
     }
     return "unknown";

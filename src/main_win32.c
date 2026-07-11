@@ -85,6 +85,7 @@ static int g_dialogue_choice_visible;
 static YaatRuntimeDialog g_active_dialog;
 static char g_active_dialog_node[YAAT_ASSET_MAX_NAME];
 static YaatRuntimeLoadResult g_runtime_load;
+static YaatRuntimeState g_runtime_state;
 static YaatAssetStore g_asset_store;
 static YaatAssetStore g_runtime_asset_store;
 static YaatWinmmAudio g_audio;
@@ -2904,8 +2905,10 @@ static void yaat_execute_commands(int first, int count)
     for (i = 0; i < count; ++i) {
         YaatCommand *cmd = &g_commands[first + i];
         if (cmd->kind == YAAT_CMD_SAY) {
+            const char *text;
             yaat_copy(g_dialogue_speaker, sizeof(g_dialogue_speaker), cmd->a, strlen(cmd->a));
-            yaat_copy(g_dialogue_text, sizeof(g_dialogue_text), cmd->b, strlen(cmd->b));
+            text = yaat_runtime_lookup_string(&g_runtime_state.strings, cmd->string_id, cmd->b);
+            yaat_copy(g_dialogue_text, sizeof(g_dialogue_text), text, strlen(text));
             g_dialogue_visible = 1;
         } else if (cmd->kind == YAAT_CMD_SET) {
             yaat_set_var_value(cmd->a, &cmd->value);
@@ -2940,7 +2943,9 @@ static void yaat_execute_commands(int first, int count)
         } else if (cmd->kind == YAAT_CMD_ANIMATE_OBJECT) {
             yaat_set_object_animation(cmd->a, cmd->b);
         } else if (cmd->kind == YAAT_CMD_TITLE_CARD) {
-            yaat_copy(g_cutscene_overlay_text, sizeof(g_cutscene_overlay_text), cmd->a, strlen(cmd->a));
+            const char *text;
+            text = yaat_runtime_lookup_string(&g_runtime_state.strings, cmd->string_id, cmd->a);
+            yaat_copy(g_cutscene_overlay_text, sizeof(g_cutscene_overlay_text), text, strlen(text));
             g_cutscene_overlay_visible = 1;
             g_cutscene_overlay_remaining_ms = yaat_clamp_int(cmd->int_value, 0, 60000);
             if (g_cutscene_overlay_remaining_ms > 0) {
@@ -4367,6 +4372,25 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
     return DefWindowProcA(window, message, w_param, l_param);
 }
 
+static void yaat_apply_language_argument(const char *command_line)
+{
+    const char *lang;
+    char value[YAAT_ASSET_MAX_LANGUAGE];
+    int i;
+    if (command_line == 0) return;
+    lang = strstr(command_line, "--lang=");
+    if (lang == 0) lang = strstr(command_line, "-lang=");
+    if (lang == 0) return;
+    lang = strchr(lang, '=');
+    if (lang == 0) return;
+    ++lang;
+    for (i = 0; i < (int)sizeof(value) - 1 && lang[i] != '\0' && !isspace((unsigned char)lang[i]); ++i) {
+        value[i] = lang[i];
+    }
+    value[i] = '\0';
+    if (value[0] != '\0') yaat_runtime_state_set_language(&g_runtime_state, value);
+}
+
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command)
 {
     WNDCLASSEXA window_class;
@@ -4374,10 +4398,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comman
     MSG message;
 
     (void)previous_instance;
-    (void)command_line;
-
+    yaat_runtime_state_init(&g_runtime_state);
+    yaat_apply_language_argument(command_line);
     yaat_asset_store_init_loose(&g_asset_store, "game");
     yaat_asset_store_init_loose(&g_runtime_asset_store, "game");
+    yaat_runtime_load_strings_from_store(&g_runtime_asset_store, g_runtime_state.language, &g_runtime_state.strings);
     yaat_winmm_audio_init(&g_audio, &g_runtime_asset_store);
     yaat_runtime_load_start_room_from_store(&g_asset_store, &g_runtime_load);
     ZeroMemory(&window_class, sizeof(window_class));

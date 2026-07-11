@@ -6,7 +6,7 @@ room room002_exit {
   background "rooms/room002_exit/background.bmp"
 
   on enter {
-    say narrator "You step through the unlocked door into the exit room."
+    say narrator "You step through the unlocked door into the exit room."  # @rooms.room002_exit.1
   }
 
   hotspot back_door {
@@ -15,7 +15,7 @@ room room002_exit {
     size 38, 112
 
     on look {
-      say player "That door leads back to the intro room."
+      say player "That door leads back to the intro room."  # @rooms.room002_exit.2
     }
 
     on click {
@@ -29,16 +29,16 @@ room room002_exit {
     size 96, 48
 
     on look {
-      say narrator "The plaque waits for a final click."
+      say narrator "The plaque waits for a final click."  # @rooms.room002_exit.3
     }
 
     on click {
       if demo_complete {
-        say narrator "The demo is already complete."
+        say narrator "The demo is already complete."  # @rooms.room002_exit.4
       } else {
         set demo_complete = true
         play_sound "audio/sfx/demo_complete.wav"
-        say narrator "Demo complete. Placeholder assets and metadata are consistent."
+        say narrator "Demo complete. Placeholder assets and metadata are consistent."  # @rooms.room002_exit.5
       }
     }
   }
@@ -50,7 +50,7 @@ room room002_exit {
     size 24, 48
 
     on look {
-      say player "The lamp uses a placeholder BMP sprite."
+      say player "The lamp uses a placeholder BMP sprite."  # @rooms.room002_exit.6
     }
   }
 }

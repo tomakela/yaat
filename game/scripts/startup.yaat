@@ -8,6 +8,6 @@ var demo_complete = false
 
 room startup_state {
   on enter {
-    say narrator "YAAT placeholder demo state is ready."
+    say narrator "YAAT placeholder demo state is ready."  # @scripts.startup.1
   }
 }

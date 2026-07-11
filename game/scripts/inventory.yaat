@@ -6,10 +6,10 @@ object brass_key {
   sprite "inventory/icons/brass_key.bmp"
 
   on look {
-    say player "A small brass key with worn teeth."
+    say player "A small brass key with worn teeth."  # @scripts.inventory.1
   }
 
   on use {
-    say player "I should try this key on a lock."
+    say player "I should try this key on a lock."  # @scripts.inventory.2
   }
 }

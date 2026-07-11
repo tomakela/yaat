@@ -311,6 +311,50 @@ static void validate_effective_view(const AssetList *list) {
     }
 }
 
+static int line_has_unquoted_label(const char *line) {
+    int in_string = 0;
+    while (*line) {
+        if (*line == '"') in_string = !in_string;
+        else if (!in_string && line[0] == '#' && line[1] == ' ' && line[2] == '@') return 1;
+        else if (!in_string && line[0] == '#' && line[1] == '@') return 1;
+        line++;
+    }
+    return 0;
+}
+
+static int line_has_script_text_command(const char *line) {
+    const char *p = line;
+    while (*p && isspace((unsigned char)*p)) p++;
+    return !strncmp(p, "say ", 4) || !strncmp(p, "title_card ", 11) || !strncmp(p, "cutscene_text ", 14);
+}
+
+static void validate_script_string_labels(const AssetEntry *entry) {
+    FILE *fp;
+    char line[MAX_PATH_BUF];
+    unsigned long line_no = 0;
+    fp = fopen(entry->source, "rb");
+    if (!fp) return;
+    while (fgets(line, sizeof(line), fp)) {
+        line_no++;
+        if (line_has_script_text_command(line) && !line_has_unquoted_label(line)) {
+            char path[MAX_PATH_BUF + 80];
+            snprintf(path, sizeof(path), "%s:%lu", entry->path, line_no);
+            report_issue("warning", path, "script text is missing a # @string.id label");
+        }
+    }
+    fclose(fp);
+}
+
+static void validate_all_script_string_labels(const AssetList *list) {
+    size_t i;
+    for (i = 0; i < list->count; ++i) {
+        size_t len = strlen(list->items[i].path);
+        if (!list->items[i].is_archive && len > 5 && !strcmp(list->items[i].path + len - 5, ".yaat")) {
+            validate_script_string_labels(&list->items[i]);
+        }
+    }
+}
+
 static int cmp_names(const void *a, const void *b) { const char * const *sa = (const char * const *)a; const char * const *sb = (const char * const *)b; return strcmp(*sa, *sb); }
 
 static void discover_archives(const char *base, AssetList *list) {
@@ -337,6 +381,7 @@ int main(int argc, char **argv) {
     else if (is_file(root)) { validate_zip_archive(root, &list); }
     else { report_issue("error", root, "game asset root folder or archive is missing"); }
     validate_effective_view(&list);
+    validate_all_script_string_labels(&list);
     printf("summary: %d error(s), %d warning(s)\n", errors, warnings);
     free(list.items); return errors == 0 ? 0 : 1;
 }

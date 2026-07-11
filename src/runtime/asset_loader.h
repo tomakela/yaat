@@ -13,6 +13,8 @@
 #define YAAT_ASSET_MAX_ANIMATIONS 8
 #define YAAT_ASSET_MAX_DIALOG_NODES 32
 #define YAAT_ASSET_MAX_DIALOG_CHOICES 6
+#define YAAT_ASSET_MAX_STRINGS 256
+#define YAAT_ASSET_MAX_LANGUAGE 16
 
 typedef struct YaatAssetBuffer {
     unsigned char *data;
@@ -171,6 +173,22 @@ typedef struct YaatRuntimeDialog {
     YaatRuntimeDialogNode nodes[YAAT_ASSET_MAX_DIALOG_NODES];
 } YaatRuntimeDialog;
 
+typedef struct YaatRuntimeStringEntry {
+    char id[YAAT_ASSET_MAX_NAME];
+    char text[YAAT_ASSET_TEXT_MAX];
+} YaatRuntimeStringEntry;
+
+typedef struct YaatRuntimeStrings {
+    char language[YAAT_ASSET_MAX_LANGUAGE];
+    int string_count;
+    YaatRuntimeStringEntry strings[YAAT_ASSET_MAX_STRINGS];
+} YaatRuntimeStrings;
+
+typedef struct YaatRuntimeState {
+    char language[YAAT_ASSET_MAX_LANGUAGE];
+    YaatRuntimeStrings strings;
+} YaatRuntimeState;
+
 typedef struct YaatRuntimeLoadResult {
     int ok;
     char error[160];
@@ -202,6 +220,14 @@ YaatRuntimeDialogNode *yaat_runtime_dialog_find_node(YaatRuntimeDialog *dialog,
                                                      const char *node_id);
 YaatRuntimeDialogNode *yaat_runtime_dialog_find_choice(YaatRuntimeDialog *dialog,
                                                        const char *choice_id);
+
+void yaat_runtime_state_init(YaatRuntimeState *state);
+void yaat_runtime_state_set_language(YaatRuntimeState *state, const char *language);
+int yaat_runtime_load_strings_from_store(YaatAssetStore *store, const char *language,
+                                         YaatRuntimeStrings *strings);
+const char *yaat_runtime_lookup_string(const YaatRuntimeStrings *strings,
+                                       const char *id,
+                                       const char *english_text);
 
 void yaat_runtime_load_inventory_from_store(YaatAssetStore *store,
                                            const char *path,
