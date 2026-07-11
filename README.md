@@ -43,7 +43,7 @@ wcl386 -?
 wlink ?
 ```
 
-The required environment variables are normally configured by `OWSETENV.BAT`: `WATCOM`, `PATH`, `INCLUDE`, and `LIB`. If `wcl386` cannot find `windows.h`, `user32.lib`, or `gdi32.lib`, rerun the environment script or check that the Win32 target components were installed.
+The required environment variables are normally configured by `OWSETENV.BAT`: `WATCOM`, `PATH`, `INCLUDE`, and `LIB`. If `wcl386` cannot find `windows.h`, `user32.lib`, `gdi32.lib`, or `winmm.lib`, rerun the environment script or check that the Win32 target components were installed.
 
 ## Building the Win32 engine shell
 
@@ -60,6 +60,7 @@ The script compiles these engine sources:
 ```text
 src\main_win32.c
 src\platform\win32\gdi_renderer.c
+src\platform\win32\audio_winmm.c
 src\script_tokenizer.c
 src\script_parser.c
 src\script_package.c
@@ -71,10 +72,10 @@ src\third_party\miniz\miniz_zip.c
 src\third_party\miniz\miniz_tinfl.c
 ```
 
-and links them as a Windows 95 GUI executable with `user32.lib` and `gdi32.lib`:
+and links them as a Windows 95 GUI executable with `user32.lib`, `gdi32.lib`, and `winmm.lib`:
 
 ```bat
-wcl386 -q -bt=nt -i=src -os -w3 -l=win95 -fe=build\yaat_engine_openwatcom.exe src\main_win32.c src\platform\win32\gdi_renderer.c src\script_tokenizer.c src\script_parser.c src\script_package.c src\script_bytecode.c src\runtime\asset_loader.c src\runtime\zip_archive.c src\third_party\miniz\miniz.c src\third_party\miniz\miniz_zip.c src\third_party\miniz\miniz_tinfl.c user32.lib gdi32.lib
+wcl386 -q -bt=nt -i=src -os -w3 -l=win95 -fe=build\yaat_engine_openwatcom.exe src\main_win32.c src\platform\win32\gdi_renderer.c src\platform\win32\audio_winmm.c src\script_tokenizer.c src\script_parser.c src\script_package.c src\script_bytecode.c src\runtime\asset_loader.c src\runtime\zip_archive.c src\third_party\miniz\miniz.c src\third_party\miniz\miniz_zip.c src\third_party\miniz\miniz_tinfl.c user32.lib gdi32.lib winmm.lib
 ```
 
 On a host where GNU Make can invoke `wcl386`, the repository `Makefile` uses the same Open Watcom compiler shape:
