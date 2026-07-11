@@ -875,6 +875,10 @@ static void yaat_load_room_objects(YaatAssetStore *store, const char *path, Yaat
             object->has_walk_y = 1;
         } else if (strcmp(text, "visible") == 0) {
             object->visible = yaat_bool_value(yaat_trim(equals), 1);
+        } else if (strcmp(text, "inventory_item") == 0 || strcmp(text, "item") == 0) {
+            yaat_copy_string(object->inventory_item, sizeof(object->inventory_item), yaat_trim(equals));
+        } else if (strcmp(text, "script_event") == 0) {
+            yaat_copy_string(object->script_event, sizeof(object->script_event), yaat_trim(equals));
         } else if (strcmp(text, "transparency") == 0) {
             yaat_parse_transparency_mode(&object->transparency, yaat_trim(equals));
         } else if (strcmp(text, "transparent_color") == 0 || strcmp(text, "color_key") == 0) {
