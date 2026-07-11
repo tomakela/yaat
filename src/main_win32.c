@@ -155,6 +155,9 @@ static void yaat_click_game(int x, int y, int immediate_room_change);
 static void yaat_pending_room_change_maybe_complete(void);
 static void yaat_pending_interaction_maybe_complete(void);
 static void yaat_update_script_timers(void);
+static YaatEntity *yaat_entity_by_id(YaatRoom *room, const char *id);
+static YaatRuntimeObject *yaat_runtime_object_by_id(const char *id);
+static int yaat_dialogue_position_for_speaker(int *dialogue_x, int *dialogue_y);
 
 static int yaat_clamp_int(int value, int minimum, int maximum)
 {
@@ -1276,9 +1279,7 @@ static void yaat_draw_runtime_room(void)
     }
 
     if (g_player_visible) yaat_draw_player();
-    if (g_player_visible && g_dialogue_visible && strcmp(g_dialogue_speaker, "player") == 0) {
-        dialogue_x = yaat_clamp_int(g_player_x - 60, 0, YAAT_BACKBUFFER_WIDTH - 120);
-        dialogue_y = yaat_clamp_int(g_player_y - YAAT_PLAYER_HEIGHT - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
+    if (yaat_dialogue_position_for_speaker(&dialogue_x, &dialogue_y)) {
         yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
     }
     yaat_draw_inventory_bar();
@@ -1765,7 +1766,6 @@ static int yaat_room_index_by_id(const char *id)
     return -1;
 }
 
-static YaatEntity *yaat_entity_by_id(YaatRoom *room, const char *id);
 static void yaat_runtime_request_room_assets(const char *room_id);
 
 static int yaat_save_script_state(const char *path)
@@ -1961,6 +1961,46 @@ static YaatRuntimeObject *yaat_runtime_object_by_id(const char *id)
         if (strcmp(object->id, id) == 0) return object;
     }
     return 0;
+}
+
+static int yaat_dialogue_position_for_speaker(int *dialogue_x, int *dialogue_y)
+{
+    int speaker_x;
+    int speaker_y;
+
+    if (!g_dialogue_visible || dialogue_x == 0 || dialogue_y == 0) {
+        return 0;
+    }
+
+    if (strcmp(g_dialogue_speaker, "player") == 0) {
+        if (!g_player_visible) {
+            return 0;
+        }
+        speaker_x = g_player_x;
+        speaker_y = g_player_y - YAAT_PLAYER_HEIGHT;
+    } else {
+        YaatRuntimeObject *object;
+        YaatEntity *entity;
+
+        object = yaat_runtime_object_by_id(g_dialogue_speaker);
+        if (object != 0 && object->visible) {
+            speaker_x = object->x + (object->width / 2);
+            speaker_y = object->y;
+        } else if (!g_runtime_load.ok && g_current_room >= 0 && g_current_room < g_room_count) {
+            entity = yaat_entity_by_id(&g_rooms[g_current_room], g_dialogue_speaker);
+            if (entity == 0 || !entity->visible) {
+                return 0;
+            }
+            speaker_x = entity->x + (entity->w / 2);
+            speaker_y = entity->y;
+        } else {
+            return 0;
+        }
+    }
+
+    *dialogue_x = yaat_clamp_int(speaker_x - 60, 0, YAAT_BACKBUFFER_WIDTH - 120);
+    *dialogue_y = yaat_clamp_int(speaker_y - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
+    return 1;
 }
 
 static YaatRuntimeObjectMutation *yaat_runtime_object_mutation(const char *room_id,
@@ -2427,9 +2467,7 @@ static void yaat_draw_script_scene(void)
     yaat_draw_rect(&g_renderer, g_target_x - 5 + g_shake_offset_x, g_target_y - 1 + g_shake_offset_y, 11, 3, 0x000f3c70UL);
     yaat_draw_rect(&g_renderer, g_target_x - 1 + g_shake_offset_x, g_target_y - 5 + g_shake_offset_y, 3, 11, 0x000f3c70UL);
     if (g_player_visible) yaat_draw_player();
-    if (g_player_visible && g_dialogue_visible && strcmp(g_dialogue_speaker, "player") == 0) {
-        dialogue_x = yaat_clamp_int(g_player_x - 60, 0, YAAT_BACKBUFFER_WIDTH - 120);
-        dialogue_y = yaat_clamp_int(g_player_y - YAAT_PLAYER_HEIGHT - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
+    if (yaat_dialogue_position_for_speaker(&dialogue_x, &dialogue_y)) {
         yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
     }
     yaat_draw_inventory_bar();
