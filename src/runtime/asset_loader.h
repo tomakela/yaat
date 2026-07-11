@@ -91,6 +91,7 @@ typedef struct YaatAnimationFrame {
     int width;
     int height;
     int duration_ms;
+    int step_pixels;
 } YaatAnimationFrame;
 
 typedef struct YaatAnimationClip {
@@ -105,8 +106,12 @@ typedef struct YaatRuntimePlayer {
     char idle[YAAT_ASSET_MAX_PATH];
     char idle_left[YAAT_ASSET_MAX_PATH];
     char idle_right[YAAT_ASSET_MAX_PATH];
+    char idle_up[YAAT_ASSET_MAX_PATH];
+    char idle_down[YAAT_ASSET_MAX_PATH];
     char walk_left[YAAT_ASSET_MAX_PATH];
     char walk_right[YAAT_ASSET_MAX_PATH];
+    char walk_up[YAAT_ASSET_MAX_PATH];
+    char walk_down[YAAT_ASSET_MAX_PATH];
     int animation_count;
     YaatAnimationClip animations[YAAT_ASSET_MAX_ANIMATIONS];
 } YaatRuntimePlayer;
