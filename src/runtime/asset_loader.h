@@ -114,6 +114,7 @@ typedef struct YaatRuntimeRoom {
     char label[YAAT_ASSET_MAX_NAME];
     char background[YAAT_ASSET_MAX_PATH];
     char walkmask[YAAT_ASSET_MAX_PATH];
+    char music[YAAT_ASSET_MAX_PATH];
     char room_path[YAAT_ASSET_MAX_PATH];
     int width;
     int height;

@@ -1,0 +1,12 @@
+room village_square {
+  npc village_guard {
+    name "Village Guard"
+    at 96, 72
+    size 36, 56
+    visible true
+
+    on talk {
+      say village_guard "Keep your eyes open after sunset."
+    }
+  }
+}
