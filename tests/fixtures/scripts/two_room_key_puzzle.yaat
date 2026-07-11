@@ -27,6 +27,21 @@ room hall {
     }
   }
 
+  object guard {
+    name "Guard"
+    sprite "assets/objects/guard.png"
+    animation "idle"
+    animation_frames "assets/objects/guard_idle_0.png; assets/objects/guard_idle_1.png"
+    animation_fps 4
+    at 216, 128
+    size 32, 48
+
+    on click {
+      animate guard idle
+      say guard "I'm watching you."
+    }
+  }
+
   hotspot locked_door {
     name "Locked Door"
     at 284, 52

@@ -38,6 +38,8 @@ typedef struct YaatRuntimeObjectMutation {
     int y;
     int has_sprite;
     char sprite[YAAT_ASSET_MAX_PATH];
+    int has_animation;
+    char animation[YAAT_ASSET_MAX_NAME];
 } YaatRuntimeObjectMutation;
 
 static YaatGdiRenderer g_renderer;
@@ -2004,6 +2006,9 @@ static void yaat_apply_runtime_object_mutations(void)
             object->animation[0] = '\0';
             object->animation_frame_count = 0;
         }
+        if (mutation->has_animation) {
+            yaat_copy(object->animation, sizeof(object->animation), mutation->animation, strlen(mutation->animation));
+        }
     }
 }
 
@@ -2055,7 +2060,24 @@ static void yaat_set_object_sprite(const char *id, const char *sprite)
         object->animation_frame_count = 0;
         if (mutation != 0) {
             mutation->has_sprite = 1;
+            mutation->has_animation = 0;
             yaat_copy(mutation->sprite, sizeof(mutation->sprite), sprite, strlen(sprite));
+        }
+    }
+}
+
+static void yaat_set_object_animation(const char *id, const char *animation)
+{
+    YaatRuntimeObject *object = yaat_runtime_object_by_id(id);
+    YaatRuntimeObjectMutation *mutation;
+    if (object != 0) {
+        mutation = yaat_runtime_object_mutation(g_runtime_load.room.id, id, 1);
+        yaat_copy(object->animation, sizeof(object->animation), animation, strlen(animation));
+        g_animation_clock_ms = 0;
+        if (mutation != 0) {
+            mutation->has_animation = 1;
+            mutation->has_sprite = 0;
+            yaat_copy(mutation->animation, sizeof(mutation->animation), animation, strlen(animation));
         }
     }
 }
@@ -2154,6 +2176,8 @@ static void yaat_execute_commands(int first, int count)
             yaat_move_object(cmd->a, cmd->bool_value, cmd->int_value);
         } else if (cmd->kind == YAAT_CMD_SET_OBJECT_SPRITE) {
             yaat_set_object_sprite(cmd->a, cmd->b);
+        } else if (cmd->kind == YAAT_CMD_ANIMATE_OBJECT) {
+            yaat_set_object_animation(cmd->a, cmd->b);
         } else if (cmd->kind == YAAT_CMD_TITLE_CARD) {
             yaat_copy(g_cutscene_overlay_text, sizeof(g_cutscene_overlay_text), cmd->a, strlen(cmd->a));
             g_cutscene_overlay_visible = 1;
