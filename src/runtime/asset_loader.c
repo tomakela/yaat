@@ -364,8 +364,8 @@ static void yaat_load_game_config(YaatAssetStore *store, const char *path,
     yaat_asset_buffer_free(&buffer);
 
     if (config->player.idle[0] == '\0') yaat_copy_string(config->player.idle, sizeof(config->player.idle), "graphics/sprites/player_idle.bmp");
-    if (config->player.idle_left[0] == '\0') yaat_copy_string(config->player.idle_left, sizeof(config->player.idle_left), "graphics/sprites/player_idle_left.bmp");
-    if (config->player.idle_right[0] == '\0') yaat_copy_string(config->player.idle_right, sizeof(config->player.idle_right), "graphics/sprites/player_idle_right.bmp");
+    if (config->player.idle_left[0] == '\0') yaat_copy_string(config->player.idle_left, sizeof(config->player.idle_left), config->player.idle);
+    if (config->player.idle_right[0] == '\0') yaat_copy_string(config->player.idle_right, sizeof(config->player.idle_right), config->player.idle);
     if (config->player.walk_left[0] == '\0') yaat_copy_string(config->player.walk_left, sizeof(config->player.walk_left), "graphics/sprites/player_walk_left.bmp");
     if (config->player.walk_right[0] == '\0') yaat_copy_string(config->player.walk_right, sizeof(config->player.walk_right), "graphics/sprites/player_walk_right.bmp");
     if (config->player.animation_count == 0) yaat_default_player_animations(&config->player);

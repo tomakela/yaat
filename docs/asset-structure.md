@@ -76,6 +76,8 @@ game/
     game.dat
 ```
 
+> Player idle directions (`idle`, `idle_left`, and `idle_right`) share `graphics/sprites/player_idle.bmp` by default. Add direction-specific idle BMPs only when the game config and runtime defaults are updated to reference them consistently.
+
 ## Top-level files and folders
 
 - `game.ini`: Global game metadata, screen size, first room, default language, and optional packed-data settings.
