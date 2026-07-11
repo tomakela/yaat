@@ -200,6 +200,30 @@ static int yaat_parse_commands(YaatScriptPackage *package, YaatScriptCursor *cur
             cmd->kind = YAAT_CMD_SET_OBJECT_SPRITE;
             parser_copy(cmd->a, sizeof(cmd->a), token->lexeme, token->length);
             parser_copy(cmd->b, sizeof(cmd->b), sprite->lexeme, sprite->length);
+        } else if (yaat_token_is(token, "title_card") || yaat_token_is(token, "cutscene_text")) {
+            ScriptToken *text = yaat_advance_token(cursor);
+            ScriptToken *duration = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_TITLE_CARD;
+            parser_copy(cmd->a, sizeof(cmd->a), text->lexeme, text->length);
+            cmd->int_value = atoi(duration->lexeme);
+        } else if (yaat_token_is(token, "wait")) {
+            token = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_WAIT;
+            cmd->int_value = atoi(token->lexeme);
+        } else if (yaat_token_is(token, "move_player")) {
+            ScriptToken *x = yaat_advance_token(cursor);
+            ScriptToken *y;
+            yaat_match_token(cursor, SCRIPT_TOKEN_COMMA);
+            y = yaat_advance_token(cursor);
+            cmd->kind = YAAT_CMD_MOVE_PLAYER;
+            cmd->bool_value = atoi(x->lexeme);
+            cmd->int_value = atoi(y->lexeme);
+        } else if (yaat_token_is(token, "show_player")) {
+            cmd->kind = YAAT_CMD_SET_PLAYER_VISIBLE;
+            cmd->bool_value = 1;
+        } else if (yaat_token_is(token, "hide_player")) {
+            cmd->kind = YAAT_CMD_SET_PLAYER_VISIBLE;
+            cmd->bool_value = 0;
         } else if (yaat_token_is(token, "shake")) {
             ScriptToken *duration = yaat_advance_token(cursor);
             ScriptToken *magnitude = yaat_advance_token(cursor);
