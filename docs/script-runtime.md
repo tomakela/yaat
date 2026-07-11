@@ -1,178 +1,81 @@
-# Script Runtime Implementation Plan
+# Script Runtime Implementation Status
 
-This document describes the initial C architecture for the YAAT script language runtime. The first implementation should prioritize deterministic, data-driven scripts that are straightforward to parse, validate, and execute from engine events.
+This document describes the current C implementation of the YAAT script runtime and calls out known limitations separately from future work. The canonical language syntax is defined in [`docs/script-language.md`](script-language.md), and the canonical bytecode package format is defined in [`docs/script-bytecode.md`](script-bytecode.md).
 
-## Initial scope
+## Implemented files
 
-The first milestone deliberately excludes user-defined functions, loops, and arbitrary expressions. Scripts should be limited to:
+The runtime is currently implemented across these files:
 
-- Room, object, and hotspot declarations.
-- Event blocks attached to rooms, objects, and hotspots.
-- Ordered command lists.
-- Literal values and simple identifiers.
-- Simple `if` statements with narrowly defined conditions, such as checking inventory state, boolean flags, equality against simple values, or current room/object state.
+- `src/script_tokenizer.c` / `src/script_tokenizer.h` tokenize `.yaat` source text.
+- `src/script_parser.c` / `src/script_parser.h` parse token streams into a `YaatScriptPackage`.
+- `src/script_package.c` / `src/script_package.h` define fixed-size runtime data structures and package helpers.
+- `src/script_bytecode.c` / `src/script_bytecode.h` read and write `.yaatbc` bytecode packages.
+- `src/main_win32.c` owns the in-engine script command executor and event integration.
 
-This keeps execution deterministic, avoids unbounded runtime behavior, and makes save/load state easier to reason about.
+There is no separate `src/script_vm.c` or `src/script_vm.h` today; VM-like command dispatch is embedded in `src/main_win32.c`.
 
-## 1. Tokenizer module
+## Current implementation
 
-Suggested files:
+### Tokenizer
 
-- `src/script_tokenizer.c`
-- `src/script_tokenizer.h`
+The tokenizer converts source text into tokens with line and column metadata for diagnostics. It recognizes identifiers, strings, integer numbers, braces, parentheses, brackets, commas, colons, assignment and comparison operators, keywords, string-id labels, `#` line comments, and an explicit EOF token.
 
-The tokenizer should convert source text into a stream of tokens with line and column metadata for diagnostics. It should avoid interpreting higher-level syntax and only classify lexical units.
+Tokenizer diagnostics currently cover lexical failures such as unexpected characters and unterminated strings. The tokenizer API returns owned token/diagnostic arrays that callers release with `script_tokenizer_result_free()`.
 
-Recommended token categories:
+### Parser and package construction
 
-- **Identifiers**: room names, object names, hotspot names, event names, command names, and variable-like references.
-- **Strings**: quoted text for dialogue, labels, asset paths, and room transition targets.
-- **Numbers**: integer values for coordinates, dimensions, priorities, or future deterministic counters.
-- **Braces and punctuation**: `{`, `}`, `(`, `)`, `[`, `]`, `,`, `:`, and statement terminators if the language adopts them.
-- **Operators**: `=` and `==` for version 0. Reserve other operators for future versions instead of tokenizing them as accepted syntax.
-- **Keywords**: `room`, `object`, `hotspot`, `event`, `on`, `if`, `else`, `true`, `false`, and any reserved command-like words that should not be accepted as identifiers.
-- **End-of-file**: an explicit EOF token to simplify parser termination.
+The parser consumes the token stream and fills a fixed-size `YaatScriptPackage`. It currently supports:
 
-Implementation notes:
+- Global `var` declarations with boolean, integer, string, and identifier values.
+- Top-level `room` declarations.
+- Top-level `event` declarations and `proc` aliases as global command blocks.
+- Room-level `on ... { ... }` event handlers.
+- Nested `object`, `hotspot`, and `npc` declarations inside rooms.
+- Top-level `object` declarations imported into an inventory-style script room.
+- Entity fields for `name`, `at`, `size`, and `visible`.
+- Command lists in source order.
+- `if` / `else` blocks with truthy checks, inventory-style `has` / `inventory` checks, and comparison operators `==`, `!=`, `<`, `<=`, `>`, and `>=`.
 
-- Store token text as slices into the original source or as owned strings, but keep ownership rules explicit in `script_tokenizer.h`.
-- Track `line` and `column` on every token.
-- Support the language-defined `#` line comments so authored scripts can be documented consistently.
-- Report unterminated strings and unexpected characters as tokenizer diagnostics instead of allowing the parser to fail later with vague errors.
+Parsed data is stored in plain C structs in `YaatScriptPackage`; the package uses fixed arrays rather than dynamic allocation or an arena allocator.
 
-## 2. Parser module
+### Bytecode package
 
-Suggested files:
+`src/script_bytecode.c` serializes and deserializes `YaatScriptPackage` to `.yaatbc`. The bytecode format is intentionally fixed-width, little-endian, and pointer-free for old Win32-era C compatibility. See [`docs/script-bytecode.md`](script-bytecode.md) for the canonical field layout, version number, command opcode mapping, value encoding, and alignment rules.
 
-- `src/script_parser.c`
-- `src/script_parser.h`
+The bytecode reader validates package counts, command kinds, condition operators, event command ranges, and child/else command ranges before accepting a package.
 
-The parser should consume tokenizer output and build validated runtime-facing structures or an intermediate AST that can be converted into runtime data. The initial grammar should stay small and predictable.
+### Engine execution and integration
 
-The parser should support:
+`src/main_win32.c` loads bytecode when available and falls back to parsing source scripts. It imports script package rooms, entities, globals, commands, and global events into engine runtime arrays.
 
-- `room` declarations with unique identifiers.
-- `object` declarations, either nested in rooms or defined globally and referenced by rooms.
-- `hotspot` declarations with geometry or named regions.
-- Event blocks such as `on enter`, `on look`, `on click`, `on use`, `on use <item>`, and `on talk`.
-- Command invocations with positional or named arguments.
-- Simple `if` statements whose condition grammar is intentionally limited.
+Command execution currently happens through `yaat_execute_commands()` in `src/main_win32.c`. Implemented command behavior includes dialogue text, variable assignment, room transitions, sound playback, inventory updates, object visibility, object movement, sprite/animation changes, cutscene/title text, waits, player movement/visibility, dialogue node selection, global event calls, and screen shake.
 
-Parser responsibilities:
+Events are executed by engine actions such as room entry, hotspot/object interaction, inventory use, and global event calls.
 
-- Enforce required fields for rooms, objects, hotspots, and events.
-- Preserve command order exactly as written.
-- Attach source spans to parsed nodes so runtime and validation errors can refer back to script locations.
-- Reject unsupported syntax explicitly, especially loops, user-defined functions, and arbitrary arithmetic or expression trees.
+## Current limitations
 
-A minimal parse flow can be:
+These are current implementation limits, not design goals for the language:
 
-1. Tokenize the complete source.
-2. Parse top-level declarations.
-3. Validate identifier uniqueness and references.
-4. Lower parsed declarations into runtime structures.
-5. Return a script package that the room loader can attach to engine data.
+- **Fixed array limits:** script packages are capped by `YAAT_MAX_ROOMS` (`8`), `YAAT_MAX_ENTITIES` (`32` per room), `YAAT_MAX_EVENTS` (`8` per room/entity), `YAAT_MAX_GLOBAL_EVENTS` (`16`), `YAAT_MAX_COMMANDS` (`128`), `YAAT_MAX_VARS` (`64`), and `YAAT_MAX_INVENTORY` (`16`).
+- **Fixed string widths:** identifiers and fields are copied into fixed buffers, such as 32-byte room/entity/event ids, 64-byte labels/names, 96-byte command arguments and string values, and 160-byte dialogue/runtime text buffers.
+- **Unsupported or unpreserved fields are skipped:** the parser preserves only selected room/entity fields. For example, room `background` is tokenized but not stored in `YaatScriptPackage`; unsupported nested blocks are skipped; unsupported scalar fields are generally consumed or ignored.
+- **Top-level declaration behavior is narrow:** top-level global `event`/`proc` blocks are stored, and top-level objects are imported into an inventory-style room. Top-level hotspots are not preserved as standalone reusable hotspot definitions.
+- **Unknown commands are skipped rather than diagnosed:** if a command token is not recognized, the parser rolls back the just-created command slot and skips an attached block when present. This means command typos may not produce a fatal parse error today.
+- **Diagnostics are incomplete:** tokenizer diagnostics include source locations, but parser and runtime validation do not yet provide a full accumulated `ScriptDiagnostic` stream with source spans for every error.
+- **Validation is limited:** the bytecode loader validates counts and command ranges, but the source parser does not comprehensively reject duplicate identifiers, unresolved references, unknown event targets, missing assets, or unknown commands.
+- **Command range limits:** command indices and event/branch ranges are serialized as 16-bit fields and must fit within `YAAT_MAX_COMMANDS`. Nested `if` children and `else` children are represented as contiguous ranges in the shared command array.
+- **No standalone VM module:** there is no separate `script_vm.c`; deterministic execution is integrated directly into `main_win32.c`, making the runtime less reusable outside the Win32 engine executable.
+- **Execution has engine side effects:** commands directly mutate engine state or call engine services. This is practical for the current game, but it is not an isolated, pure interpreter API.
+- **Control flow remains intentionally small:** there are no user-defined functions beyond global `event`/`proc` command blocks, no loops, no arithmetic expression trees, and no arbitrary script-defined code execution.
 
-## 3. Runtime data structures
+## Future work
 
-The runtime model should be plain C structures with clear allocation and teardown ownership. Suggested public types include:
+The following ideas are not implemented yet and should be treated as future work:
 
-- `ScriptRoom`
-  - Room identifier, display name, asset references, room-level events, objects, and hotspots.
-- `ScriptObject`
-  - Object identifier, initial state, sprite or asset path, inventory metadata, and object-level events.
-- `ScriptHotspot`
-  - Hotspot identifier, bounds or polygon data, cursor/action metadata, and hotspot-level events.
-- `ScriptEvent`
-  - Event type, optional trigger metadata, source span, and an ordered list of commands.
-- `ScriptCommand`
-  - Command opcode or command name, argument list, source span, and prevalidated target references where possible.
-- `ScriptValue`
-  - Tagged values for strings, numbers, booleans, identifiers, asset paths, and future deterministic value kinds.
-
-Recommended ownership approach:
-
-- Keep all script-owned allocations within a `ScriptPackage` or arena-style allocator.
-- Expose explicit load/free functions, such as `script_package_load_from_file()` and `script_package_free()`.
-- Avoid exposing mutable internal arrays directly unless the engine has a clear ownership contract.
-
-## 4. Interpreter module
-
-Suggested files:
-
-- `src/script_vm.c`
-- `src/script_vm.h`
-
-The interpreter should execute command lists in response to engine events. It should not evaluate arbitrary code; it should dispatch known commands through a fixed command table.
-
-Core responsibilities:
-
-- Accept a `ScriptEvent` and an execution context containing current room, inventory, flags, dialogue services, asset services, and transition services.
-- Iterate commands in source order.
-- Evaluate simple `if` conditions using deterministic engine state.
-- Dispatch known commands such as dialogue display, flag updates, inventory changes, object visibility changes, sound playback, and room transitions.
-- Return structured execution results so the engine can react to requested transitions or blocking dialogue.
-
-Recommended API shape:
-
-- `script_vm_execute_event(ctx, event)` for event-driven execution.
-- `script_vm_execute_commands(ctx, commands, count)` for shared command-list execution.
-- `script_vm_register_builtin_commands()` if command dispatch is table-driven.
-
-The VM should keep command execution deterministic by avoiding timers, random numbers, filesystem access, network access, or other nondeterministic side effects inside script code. If the engine needs such behavior later, it should be exposed as explicit engine-controlled commands with deterministic save/load semantics.
-
-## 5. Integration points with the game engine
-
-The first integration layer should connect parsed script data to existing engine systems without making scripts responsible for engine ownership.
-
-Required integration points:
-
-- **Room loading**
-  - Load and validate a script package when a room or adventure file is loaded.
-  - Resolve room asset paths and report missing asset path warnings.
-  - Attach `ScriptRoom` data to engine room instances.
-- **Hotspot click handling**
-  - Map click coordinates to `ScriptHotspot` entries.
-  - Execute the hotspot `on click` event or a more specific action event.
-- **Inventory actions**
-  - Route inventory use/combine/select events to object or hotspot events.
-  - Provide deterministic inventory predicates for simple `if` conditions.
-- **Dialogue display**
-  - Expose a command that passes dialogue text and optional speaker metadata to the engine dialogue UI.
-  - Return control according to the engine's existing blocking or non-blocking dialogue model.
-- **Room transitions**
-  - Expose a command for transitioning to another room by identifier.
-  - Validate transition targets at load time when possible.
-  - Return a transition request to the engine instead of directly mutating unrelated engine state from the VM.
-
-## 6. Error handling and diagnostics
-
-Diagnostics should be useful to script authors and precise enough for tests.
-
-Required diagnostics:
-
-- **Line/column diagnostics**
-  - Every tokenizer, parser, validation, and VM error should include a source line and column when it originated from script text.
-- **Unknown command errors**
-  - The parser or validator should reject command names that are not in the initial built-in command table.
-- **Missing asset path warnings**
-  - During validation or room loading, asset references should be checked and reported as warnings so authors can fix broken paths without confusing them with syntax errors.
-- **Duplicate identifier checks**
-  - Duplicate room, object, and hotspot identifiers should be reported before runtime execution begins.
-
-Error model recommendations:
-
-- Use a `ScriptDiagnostic` type with severity, message, source span, and optional related identifier.
-- Accumulate multiple diagnostics during validation when possible instead of stopping after the first non-fatal issue.
-- Treat syntax errors, duplicate identifiers, unknown commands, and invalid event targets as fatal load errors.
-- Treat missing optional assets as warnings unless the engine requires the asset to run.
-
-## Milestone sequence
-
-1. Implement tokenizer with token tests and diagnostics.
-2. Implement parser for declarations, event blocks, command calls, and simple `if` statements.
-3. Define runtime data structures and ownership/free APIs.
-4. Add validation for identifiers, command names, event targets, and asset paths.
-5. Implement the VM command dispatcher and deterministic execution context.
-6. Integrate room loading, hotspot clicks, inventory actions, dialogue display, and room transitions.
-7. Add end-to-end script fixtures that exercise a room with objects, hotspots, inventory checks, dialogue, and a transition.
+1. Split the embedded command dispatcher out of `src/main_win32.c` into a reusable `src/script_vm.c` / `src/script_vm.h` module with an explicit execution context.
+2. Add a proper parser/validation diagnostic model that accumulates source-spanned errors and warnings for duplicate identifiers, unknown commands, invalid event targets, unresolved references, and missing assets.
+3. Decide whether currently skipped fields such as room backgrounds and additional object/hotspot metadata should become stored package fields.
+4. Replace or augment fixed-size arrays with a deliberate allocation strategy if larger adventures need more rooms, entities, events, commands, variables, or text.
+5. Expand end-to-end fixture coverage for source parsing, bytecode round-trips, event dispatch, inventory checks, dialogue, transitions, and failure diagnostics.
+6. Consider a more reusable command registry if script commands need to be shared by non-Win32 tools or tests.
+7. Add deterministic save/load semantics for any future command that uses timers, randomness, filesystem access, or other side effects.
