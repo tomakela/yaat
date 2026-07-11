@@ -17,6 +17,7 @@ YAAT is an experimental Windows 95-friendly point-and-click adventure engine pro
 - [Asset structure](docs/asset-structure.md)
 - [Script language](docs/script-language.md)
 - [Script runtime implementation plan](docs/script-runtime.md)
+- [Parallel JavaScript engine plan](docs/javascript-engine.md)
 - [Toolchain compatibility](docs/toolchain-compatibility.md)
 - [PNG library suitability](docs/png-library-suitability.md)
 - [Win95 API allowlist](docs/win95-api-allowlist.md)
