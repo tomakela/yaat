@@ -2503,6 +2503,29 @@ static void yaat_player_say(const char *text)
     g_dialogue_visible = 1;
 }
 
+static void yaat_default_inventory_action_sentence(const char *verb)
+{
+    if (verb == 0 || verb[0] == '\0' || strcmp(verb, "walk") == 0) {
+        yaat_player_say("I can't walk there.");
+    } else if (strcmp(verb, "use") == 0) {
+        yaat_player_say("I can't use those together.");
+    } else if (strcmp(verb, "look") == 0) {
+        yaat_player_say("I don't see anything special about it.");
+    } else if (strcmp(verb, "read") == 0) {
+        yaat_player_say("There is nothing on it to read.");
+    } else if (strcmp(verb, "take") == 0) {
+        yaat_player_say("I already have it.");
+    } else if (strcmp(verb, "talk") == 0) {
+        yaat_player_say("It doesn't answer.");
+    } else if (strcmp(verb, "open") == 0) {
+        yaat_player_say("I can't open it.");
+    } else if (strcmp(verb, "close") == 0) {
+        yaat_player_say("I can't close it.");
+    } else {
+        yaat_player_say("I can't do that with it.");
+    }
+}
+
 static void yaat_default_action_sentence(const char *verb)
 {
     if (verb == 0 || verb[0] == '\0' || strcmp(verb, "walk") == 0) {
@@ -2873,6 +2896,14 @@ static void yaat_load_script_file(const char *path)
     }
 }
 
+static void yaat_load_inventory_scripts(void)
+{
+    int i;
+    yaat_load_script_file("game/scripts/inventory.yaat");
+    yaat_load_script_file("scripts/inventory.yaat");
+    for (i = 0; i < g_runtime_load.inventory.item_count; ++i) {
+        YaatRuntimeInventoryItem *item = &g_runtime_load.inventory.items[i];
+        if (item->script[0] != '\0') yaat_load_script_file(item->script);
 static int yaat_script_path_already_loaded(char paths[][YAAT_ASSET_MAX_PATH], int count, const char *path)
 {
     int i;
@@ -2920,6 +2951,7 @@ static void yaat_load_demo(void)
     yaat_load_script_file("rooms/room000_start/script.yaat");
     yaat_load_script_file("rooms/room001_intro/script.yaat");
     yaat_load_script_file("rooms/room002_exit/script.yaat");
+    yaat_load_inventory_scripts();
     yaat_load_inventory_item_scripts();
     yaat_load_player_sprite_metadata();
     room_index = g_runtime_load.ok ? yaat_room_index_by_id(g_runtime_load.room.id) : -1;
@@ -3459,9 +3491,25 @@ static YaatEvent *yaat_find_exact_event(YaatEvent *events, int count, const char
 static void yaat_click_inventory_item(const char *item)
 {
     YaatEntity *entity;
-    YaatEvent *event;
+    YaatEvent *event = 0;
+    YaatRuntimeInventoryItem *runtime_item;
+    const char *verb;
     if (item == 0 || item[0] == '\0') return;
     yaat_pending_interaction_clear();
+    verb = yaat_active_verb();
+    if (strcmp(verb, "use") == 0 && g_selected_inventory[0] == '\0') {
+        yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), item, strlen(item));
+        return;
+    }
+    entity = yaat_entity_by_id_any_room(item);
+    if (entity != 0) {
+        if (strcmp(verb, "use") == 0 && g_selected_inventory[0] != '\0') {
+            event = yaat_find_event(entity->events, entity->event_count, verb, g_selected_inventory);
+        }
+        if (event == 0) event = yaat_find_event(entity->events, entity->event_count, verb, 0);
+        if (event == 0 && strcmp(verb, "click") != 0) {
+            event = yaat_find_event(entity->events, entity->event_count, "click", 0);
+        }
     entity = yaat_entity_by_id_any_room(item);
     if (strcmp(g_selected_verb, "use") == 0) {
         if (g_selected_inventory[0] != '\0' && strcmp(g_selected_inventory, item) != 0 && entity != 0) {
@@ -3481,8 +3529,11 @@ static void yaat_click_inventory_item(const char *item)
     }
     if (event != 0) {
         yaat_execute_event(event);
+    } else if (strcmp(verb, "look") == 0 && (runtime_item = yaat_find_runtime_inventory_item(item)) != 0 && runtime_item->description[0] != '\0') {
+        yaat_player_say(runtime_item->description);
+        yaat_deselect_action();
     } else {
-        yaat_default_action_sentence(g_selected_verb);
+        yaat_default_inventory_action_sentence(verb);
         yaat_deselect_action();
     }
 }
