@@ -164,6 +164,7 @@ static void yaat_unload_bitmap(YaatBitmap *bitmap);
 static void yaat_click_game(int x, int y, int immediate_room_change);
 static void yaat_draw_splash_screen(void);
 static void yaat_pending_room_change_maybe_complete(void);
+static void yaat_room_change_region_maybe_enter(void);
 static void yaat_pending_interaction_maybe_complete(void);
 static void yaat_update_script_timers(void);
 static void yaat_open_save_menu(YaatSaveMenuMode mode);
@@ -2711,6 +2712,7 @@ static void yaat_update_player(void)
         if (yaat_player_motion_complete()) {
             yaat_pending_room_change_maybe_complete();
             yaat_pending_interaction_maybe_complete();
+            yaat_room_change_region_maybe_enter();
         }
     }
 
@@ -2945,13 +2947,18 @@ static void yaat_pending_room_change_maybe_complete(void)
         yaat_pending_room_change_clear();
         return;
     }
-    if (g_player_x >= hotspot->x && g_player_y >= hotspot->y &&
-        g_player_x < hotspot->x + hotspot->width &&
-        g_player_y < hotspot->y + hotspot->height) {
-        yaat_runtime_change_room(hotspot);
-    } else {
-        yaat_pending_room_change_clear();
-    }
+    yaat_runtime_change_room(hotspot);
+}
+
+static void yaat_room_change_region_maybe_enter(void)
+{
+    YaatRuntimeHotspot *hotspot;
+
+    if (g_pending_room_change || g_pending_interaction || !g_runtime_load.ok) return;
+    if (!yaat_player_motion_complete()) return;
+    hotspot = yaat_runtime_hotspot_at(g_player_x, g_player_y);
+    if (!yaat_runtime_hotspot_change_room_enabled(hotspot)) return;
+    yaat_runtime_change_room(hotspot);
 }
 
 static void yaat_pending_interaction_maybe_complete(void)
