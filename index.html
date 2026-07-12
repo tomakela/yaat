@@ -27,15 +27,15 @@
     <button id="fullscreen" type="button">Enter fullscreen</button>
     <label><input id="touch-cursor" type="checkbox"> Touch cursor mode</label>
   </div>
-  <p>Left click playfield to interact. Choose verbs and inventory from the lower bar. Touch cursor mode lets you drag anywhere to move the cursor and tap anywhere to click it.</p>
+  <p>Left click playfield to interact. Choose verbs and inventory from the lower bar. Touch cursor mode lets you drag anywhere to move the cursor faster than your finger and tap separately to click it.</p>
 </main>
 <script>
 (() => {
 'use strict';
-const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000;
+const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000,TOUCH_CURSOR_SENSITIVITY=1.75,TOUCH_DRAG_THRESHOLD=3;
 const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
 const shell=document.querySelector('main'), fullscreenButton=document.getElementById('fullscreen'), touchCursorToggle=document.getElementById('touch-cursor');
-const touchState={active:false,id:-1,lastX:0,lastY:0,moved:false,suppressClickUntil:0};
+const touchState={active:false,id:-1,lastX:0,lastY:0,totalMove:0,moved:false,suppressClickUntil:0};
 const imageCache=new Map();
 function img(path){ if(!imageCache.has(path)){ const im=new Image(); im.src='game/'+path; imageCache.set(path,im);} return imageCache.get(path); }
 function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w|0,h|0); }
@@ -43,7 +43,7 @@ function text(s,x,y,c='#f0e8d0'){ ctx.fillStyle=c; ctx.font='8px monospace'; ctx
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function canvasPoint(e){ const b=canvas.getBoundingClientRect(); return {x:clamp((e.clientX-b.left)*W/b.width,0,W-1), y:clamp((e.clientY-b.top)*H/b.height,0,H-1)}; }
 function setCursorFromClient(e){ const p=canvasPoint(e); state.cx=p.x; state.cy=p.y; }
-function moveCursorByClientDelta(dx,dy){ const b=canvas.getBoundingClientRect(); state.cx=clamp(state.cx+dx*W/b.width,0,W-1); state.cy=clamp(state.cy+dy*H/b.height,0,H-1); }
+function moveCursorByClientDelta(dx,dy){ const b=canvas.getBoundingClientRect(); state.cx=clamp(state.cx+dx*TOUCH_CURSOR_SENSITIVITY*W/b.width,0,W-1); state.cy=clamp(state.cy+dy*TOUCH_CURSOR_SENSITIVITY*H/b.height,0,H-1); }
 function hashColor(s, fallback){ let h=fallback; for (const ch of s) h=((h*33)^ch.charCodeAt(0))>>>0; return '#'+(h&0xffffff).toString(16).padStart(6,'0'); }
 const verbs=['look','use','talk','take','open','close'];
 const inventoryDefs={ brass_key:{name:'Brass Key', icon:'inventory/icons/brass_key.bmp', description:'A small brass key with worn teeth.'} };
@@ -84,9 +84,9 @@ function drawCursor(){ const use=(at(state.cx,state.cy)?.cursor==='use')||state.
 function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ walkToObj(o); state.pending=o; } else { state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); state.pending=null; } }
 canvas.addEventListener('mousemove',e=>{ if(!touchCursorToggle.checked) setCursorFromClient(e); });
 canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; if(!touchCursorToggle.checked) setCursorFromClient(e); triggerCursorClick(); });
-window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.pointerType!=='touch') return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.moved=false; if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
-window.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; if(Math.hypot(dx,dy)>1) touchState.moved=true; moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
-window.addEventListener('pointerup',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; touchState.active=false; touchState.suppressClickUntil=performance.now()+500; triggerCursorClick(); e.preventDefault(); },{passive:false});
+window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.pointerType!=='touch') return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
+window.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD) touchState.moved=true; moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
+window.addEventListener('pointerup',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const wasDrag=touchState.moved; touchState.active=false; touchState.suppressClickUntil=performance.now()+500; if(!wasDrag) triggerCursorClick(); e.preventDefault(); },{passive:false});
 fullscreenButton?.addEventListener('click',async()=>{ if(document.fullscreenElement){ await document.exitFullscreen(); } else { await shell.requestFullscreen(); } });
 document.addEventListener('fullscreenchange',()=>{ fullscreenButton.textContent=document.fullscreenElement?'Exit fullscreen':'Enter fullscreen'; });
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
