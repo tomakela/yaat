@@ -2809,9 +2809,6 @@ static void yaat_runtime_execute_entity_event(const char *entity_id, const char 
     } else {
         event = yaat_find_event(entity->events, entity->event_count, event_name, 0);
     }
-    if (event == 0 && strcmp(event_name, "walk") == 0) {
-        event = yaat_find_event(entity->events, entity->event_count, "click", 0);
-    }
     if (event != 0) {
         yaat_execute_event(event);
     } else {
@@ -3109,7 +3106,6 @@ static void yaat_click_game(int x, int y, int immediate_room_change)
                 event = yaat_find_event(e->events, e->event_count, g_selected_verb, g_selected_inventory);
             }
             if (!event) event = yaat_find_event(e->events, e->event_count, yaat_active_verb(), 0);
-            if (!event && strcmp(yaat_active_verb(), "walk") == 0) event = yaat_find_event(e->events, e->event_count, "click", 0);
             if (event != 0) {
                 yaat_execute_event(event);
             } else {
@@ -3296,6 +3292,56 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
             yaat_pending_room_change_clear();
         }
         return;
+    }
+
+    if (strcmp(yaat_active_verb(), "walk") == 0) {
+        if (g_runtime_load.ok) {
+            for (i = g_runtime_load.room.object_count - 1; i >= 0; --i) {
+                YaatRuntimeObject *object = &g_runtime_load.room.objects[i];
+                if (object->visible && backbuffer_x >= object->x &&
+                    backbuffer_y >= object->y &&
+                    backbuffer_x < object->x + object->width &&
+                    backbuffer_y < object->y + object->height) {
+                    walk_target_x = backbuffer_x;
+                    walk_target_y = yaat_clamp_int(backbuffer_y,
+                                                   YAAT_PLAYER_HEIGHT,
+                                                   YAAT_PLAYFIELD_HEIGHT - 1);
+                    if (yaat_find_walk_target_for_object(object,
+                                                         &walk_target_x,
+                                                         &walk_target_y)) {
+                        yaat_pending_interaction_clear();
+                        yaat_pending_room_change_clear();
+                        yaat_set_player_target(walk_target_x, walk_target_y);
+                        return;
+                    }
+                    break;
+                }
+            }
+        } else if (g_current_room >= 0 && g_current_room < g_room_count) {
+            YaatRoom *room = &g_rooms[g_current_room];
+            for (i = room->entity_count - 1; i >= 0; --i) {
+                YaatEntity *entity = &room->entities[i];
+                if (entity->visible && backbuffer_x >= entity->x &&
+                    backbuffer_y >= entity->y &&
+                    backbuffer_x < entity->x + entity->w &&
+                    backbuffer_y < entity->y + entity->h) {
+                    walk_target_x = backbuffer_x;
+                    walk_target_y = yaat_clamp_int(backbuffer_y,
+                                                   YAAT_PLAYER_HEIGHT,
+                                                   YAAT_PLAYFIELD_HEIGHT - 1);
+                    if (yaat_find_walk_target_for_rect(entity->x, entity->y,
+                                                       entity->w, entity->h,
+                                                       &walk_target_x,
+                                                       &walk_target_y)) {
+                        yaat_pending_interaction_clear();
+                        yaat_pending_room_change_clear();
+                        yaat_set_player_target(walk_target_x, walk_target_y);
+                        return;
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     if (strcmp(g_selected_verb, "use") == 0) {
