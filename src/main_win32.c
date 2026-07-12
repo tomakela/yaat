@@ -3290,6 +3290,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
             yaat_pending_interaction_clear();
             yaat_pending_room_change_set(hotspot);
             yaat_set_player_target(walk_target_x, walk_target_y);
+            yaat_pending_room_change_maybe_complete();
         } else {
             yaat_pending_interaction_clear();
             yaat_pending_room_change_clear();
@@ -3316,6 +3317,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
                                                      backbuffer_y);
                         yaat_pending_room_change_clear();
                         yaat_set_player_target(walk_target_x, walk_target_y);
+                        yaat_pending_interaction_maybe_complete();
                         return;
                     }
                     break;
@@ -3331,6 +3333,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
                     yaat_pending_interaction_set(backbuffer_x, backbuffer_y);
                     yaat_pending_room_change_clear();
                     yaat_set_player_target(walk_target_x, walk_target_y);
+                    yaat_pending_interaction_maybe_complete();
                     return;
                 }
             }
@@ -3354,6 +3357,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
                                                      backbuffer_y);
                         yaat_pending_room_change_clear();
                         yaat_set_player_target(walk_target_x, walk_target_y);
+                        yaat_pending_interaction_maybe_complete();
                         return;
                     }
                     break;
