@@ -70,6 +70,7 @@ js-parity:
 asset-validate: $(BUILD_DIR)/asset_validate
 	./$(BUILD_DIR)/asset_validate game
 
+# asset_store.[ch] is a smoke-test helper; runtime asset loading lives in asset_loader.[ch].
 $(BUILD_DIR)/asset_store_smoke: tests/asset_store/asset_store_smoke.c src/runtime/asset_store.c src/runtime/asset_store.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) -std=c89 -Wall -Wextra -pedantic -Isrc -o $@ tests/asset_store/asset_store_smoke.c src/runtime/asset_store.c

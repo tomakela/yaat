@@ -1,3 +1,4 @@
+/* Smoke-test-only packed/loose asset helper. */
 #include "runtime/asset_store.h"
 
 #include <ctype.h>
@@ -18,7 +19,7 @@ static void copy_string(char *dst, int dst_size, const char *src)
     dst[i] = '\0';
 }
 
-static void set_error(YaatAssetReadResult *result, const char *message,
+static void set_error(YaatTestAssetReadResult *result, const char *message,
                       const char *path)
 {
     result->ok = 0;
@@ -47,15 +48,15 @@ static void join_path(char *dst, int dst_size, const char *left,
     }
 }
 
-void yaat_asset_store_init(YaatAssetStore *store, const char *root)
+void yaat_test_asset_store_init(YaatTestAssetStore *store, const char *root)
 {
     if (store == 0) return;
     copy_string(store->root, sizeof(store->root), root == 0 ? "." : root);
 }
 
-int yaat_asset_normalize_path(const char *input, char *output, int output_size)
+int yaat_test_asset_normalize_path(const char *input, char *output, int output_size)
 {
-    char temp[YAAT_ASSET_STORE_MAX_PATH];
+    char temp[YAAT_TEST_ASSET_STORE_MAX_PATH];
     int i;
     int out;
     int seg_start;
@@ -97,7 +98,7 @@ int yaat_asset_normalize_path(const char *input, char *output, int output_size)
     return 1;
 }
 
-static int read_loose(const char *path, YaatAssetReadResult *result)
+static int read_loose(const char *path, YaatTestAssetReadResult *result)
 {
     FILE *fp = fopen(path, "rb");
     long size;
@@ -105,7 +106,7 @@ static int read_loose(const char *path, YaatAssetReadResult *result)
     fseek(fp, 0, SEEK_END);
     size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    if (size < 0 || size > YAAT_ASSET_STORE_MAX_DATA) {
+    if (size < 0 || size > YAAT_TEST_ASSET_STORE_MAX_DATA) {
         fclose(fp);
         set_error(result, "Asset is too large", path);
         return 1;
@@ -125,7 +126,7 @@ static int read_loose(const char *path, YaatAssetReadResult *result)
 }
 
 static int read_archive(const char *archive_path, const char *logical,
-                        YaatAssetReadResult *result)
+                        YaatTestAssetReadResult *result)
 {
     FILE *fp = fopen(archive_path, "rb");
     char line[YAAT_LINE_MAX];
@@ -136,17 +137,17 @@ static int read_archive(const char *archive_path, const char *logical,
         return 0;
     }
     while (fgets(line, sizeof(line), fp) != 0) {
-        char entry_path[YAAT_ASSET_STORE_MAX_PATH];
-        char normalized[YAAT_ASSET_STORE_MAX_PATH];
+        char entry_path[YAAT_TEST_ASSET_STORE_MAX_PATH];
+        char normalized[YAAT_TEST_ASSET_STORE_MAX_PATH];
         char *colon;
         int size;
         colon = strrchr(line, ':');
         if (colon == 0) break;
         *colon = '\0';
         size = atoi(colon + 1);
-        if (size < 0 || size > YAAT_ASSET_STORE_MAX_DATA) break;
+        if (size < 0 || size > YAAT_TEST_ASSET_STORE_MAX_DATA) break;
         copy_string(entry_path, sizeof(entry_path), line);
-        if (yaat_asset_normalize_path(entry_path, normalized, sizeof(normalized)) &&
+        if (yaat_test_asset_normalize_path(entry_path, normalized, sizeof(normalized)) &&
             strcmp(normalized, logical) == 0) {
             result->size = (int)fread(result->data, 1, (size_t)size, fp);
             if (result->size != size || ferror(fp)) {
@@ -168,17 +169,17 @@ static int read_archive(const char *archive_path, const char *logical,
     return found;
 }
 
-void yaat_asset_store_read(YaatAssetStore *store, const char *asset_path,
-                           YaatAssetReadResult *result)
+void yaat_test_asset_store_read(YaatTestAssetStore *store, const char *asset_path,
+                                YaatTestAssetReadResult *result)
 {
-    char logical[YAAT_ASSET_STORE_MAX_PATH];
-    char full[YAAT_ASSET_STORE_MAX_ROOT];
-    char archive[YAAT_ASSET_STORE_MAX_ROOT];
+    char logical[YAAT_TEST_ASSET_STORE_MAX_PATH];
+    char full[YAAT_TEST_ASSET_STORE_MAX_ROOT];
+    char archive[YAAT_TEST_ASSET_STORE_MAX_ROOT];
     int patch;
 
     if (result == 0) return;
     memset(result, 0, sizeof(*result));
-    if (store == 0 || !yaat_asset_normalize_path(asset_path, logical, sizeof(logical))) {
+    if (store == 0 || !yaat_test_asset_normalize_path(asset_path, logical, sizeof(logical))) {
         set_error(result, "Unsafe asset path", asset_path);
         return;
     }
