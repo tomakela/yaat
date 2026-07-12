@@ -27,6 +27,18 @@ The JavaScript engine should consume the same logical content as the C runtime:
 
 When direct archive access is unavailable, a host adapter may provide an already-enumerated manifest and byte buffers. The adapter must still expose the same winning asset for a given path as the documented runtime precedence rules.
 
+## Current implementation scope
+
+The current `src/js/` implementation is intentionally a small test/parity harness, not a full runtime peer for the Win32 C engine. It decodes shared `.yaatbc` packages, executes deterministic script commands against explicit state, exposes ordered asset lookup adapters, and includes a browser demo at the host edge. Rendering, audio, input systems, archive parsing, save UI, and production game-loop ownership remain C-runtime responsibilities until they are deliberately promoted into JavaScript modules with parity tests.
+
+Parity is intended for these JavaScript boundaries:
+
+- `bytecodeLoader.js`: bytecode decoding for the shared package data model.
+- `scriptVm.js`: deterministic command execution and emitted effect records.
+- `gameState.js`: script-visible state mutation and snapshots.
+- `assetStore.js`: ordered winning-asset lookup through host-provided layers.
+- `browserHost.js`: browser-only composition around the core harness, kept separate from VM semantics.
+
 ## Architecture
 
 Suggested modules:

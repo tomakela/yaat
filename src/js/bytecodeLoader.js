@@ -1,3 +1,8 @@
+// JavaScript parity harness: bytecode decoding boundary.
+// Mirrors src/script_bytecode.c by turning .yaatbc bytes into the same
+// package-shaped records used by the C runtime. Keep this module limited to
+// explicit little-endian decoding, fixed-width Windows-1252 strings, and
+// validation of bytecode structure; execution semantics belong in scriptVm.js.
 export const VALUE_KIND = Object.freeze({ BOOL: 0, INT: 1, STRING: 2 });
 export const COMMAND_KIND = Object.freeze({
   SAY: 0, SET: 1, GOTO: 2, PLAY_SOUND: 3, TAKE: 4, HIDE: 5, IF: 6, SHAKE: 7,
