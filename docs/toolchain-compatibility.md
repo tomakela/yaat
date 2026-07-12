@@ -39,34 +39,17 @@ wlink ?
 
 ## Open Watcom C/C++ engine build
 
-The Open Watcom engine script compiles the Win32 shell, renderer, script pipeline, runtime asset loader, ZIP archive reader, and bundled miniz sources. Keep this source list in sync with `Makefile` and the fallback `scripts/build_engine_*.bat` commands whenever runtime source files are added:
+The Open Watcom engine script compiles the Win32 shell, renderer, script pipeline, runtime asset loader, ZIP archive reader, and bundled miniz sources. The canonical source list lives in `scripts/engine_sources.txt`; use `make print-sources` to inspect the exact list shared by the `Makefile` and `scripts/build_engine_*.bat` commands.
 
 ```bat
 scripts\build_engine_openwatcom.bat
 ```
 
-Equivalent direct command:
+Equivalent direct command shape:
 
 ```bat
 mkdir build
-wcl386 -q -bt=nt -i=src -os -w3 -l=win95 -fe=build\yaat_engine_openwatcom.exe src\main_win32.c src\platform\win32\gdi_renderer.c src\platform\win32\audio_winmm.c src\script_tokenizer.c src\script_parser.c src\script_package.c src\script_bytecode.c src\runtime\asset_loader.c src\runtime\zip_archive.c src\third_party\miniz\miniz.c src\third_party\miniz\miniz_zip.c src\third_party\miniz\miniz_tinfl.c user32.lib gdi32.lib winmm.lib
-```
-
-Source list:
-
-```text
-src\main_win32.c
-src\platform\win32\gdi_renderer.c
-src\platform\win32\audio_winmm.c
-src\script_tokenizer.c
-src\script_parser.c
-src\script_package.c
-src\script_bytecode.c
-src\runtime\asset_loader.c
-src\runtime\zip_archive.c
-src\third_party\miniz\miniz.c
-src\third_party\miniz\miniz_zip.c
-src\third_party\miniz\miniz_tinfl.c
+wcl386 -q -bt=nt -i=src -os -w3 -l=win95 -fe=build\yaat_engine_openwatcom.exe [sources from scripts\engine_sources.txt] user32.lib gdi32.lib winmm.lib
 ```
 
 Link libraries:

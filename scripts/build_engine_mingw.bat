@@ -1,7 +1,18 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
+
+rem Engine sources are read from scripts/engine_sources.txt.
 
 if not exist build mkdir build
 
-mingw32-gcc -I src -mwindows -march=i386 -Os -static-libgcc -o build\yaat_engine_mingw.exe src\main_win32.c src\platform\win32\gdi_renderer.c src\platform\win32\audio_winmm.c src\script_tokenizer.c src\script_parser.c src\script_package.c src\script_bytecode.c src\runtime\asset_loader.c src\runtime\zip_archive.c src\third_party\miniz\miniz.c src\third_party\miniz\miniz_zip.c src\third_party\miniz\miniz_tinfl.c -luser32 -lgdi32 -lwinmm
+set "ENGINE_SOURCES="
+for /f "usebackq eol=# tokens=* delims=" %%S in ("scripts\engine_sources.txt") do (
+    set "SRC=%%S"
+    if not "!SRC!"=="" (
+        set "SRC=!SRC:/=\!"
+        set "ENGINE_SOURCES=!ENGINE_SOURCES! !SRC!"
+    )
+)
+
+mingw32-gcc -I src -mwindows -march=i386 -Os -static-libgcc -o build\yaat_engine_mingw.exe !ENGINE_SOURCES! -luser32 -lgdi32 -lwinmm
 exit /b %ERRORLEVEL%
