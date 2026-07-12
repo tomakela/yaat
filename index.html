@@ -6,6 +6,11 @@
 <title>YAAT HTML5</title>
 <style>
   :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#101018; color:#eee; }
+  html, body { width:100%; height:100%; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; overscroll-behavior:none; background:#000; touch-action:none; }
+  main { position:relative; width:100vw; height:100vh; display:grid; place-items:center; text-align:center; touch-action:none; }
+  main:fullscreen { background:#000; }
+  main:fullscreen canvas { width:100vw; height:100vh; max-width:none; border:0; object-fit:contain; }
   body { margin:0; min-height:100vh; display:grid; place-items:center; overscroll-behavior:none; }
   main { position:relative; text-align:center; }
   main:fullscreen { width:100vw; height:100vh; display:grid; place-items:center; background:#000; }
@@ -39,6 +44,14 @@ function img(path){ if(!imageCache.has(path)){ const im=new Image(); im.src='gam
 function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w|0,h|0); }
 function text(s,x,y,c='#f0e8d0'){ ctx.fillStyle=c; ctx.font='8px monospace'; ctx.textBaseline='top'; ctx.fillText(s,x,y); }
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function canvasContentRect(){
+  const b=canvas.getBoundingClientRect(), canvasAspect=b.width/b.height, gameAspect=W/H;
+  if(canvasAspect>gameAspect){ const width=b.height*gameAspect; return {left:b.left+(b.width-width)/2, top:b.top, width, height:b.height}; }
+  const height=b.width/gameAspect; return {left:b.left, top:b.top+(b.height-height)/2, width:b.width, height};
+}
+function canvasPoint(e){ const b=canvasContentRect(); return {x:clamp((e.clientX-b.left)*W/b.width,0,W-1), y:clamp((e.clientY-b.top)*H/b.height,0,H-1)}; }
+function setCursorFromClient(e){ const p=canvasPoint(e); state.cx=p.x; state.cy=p.y; }
+function moveCursorByClientDelta(dx,dy){ const b=canvasContentRect(); state.cx=clamp(state.cx+dx*TOUCH_CURSOR_SENSITIVITY*W/b.width,0,W-1); state.cy=clamp(state.cy+dy*TOUCH_CURSOR_SENSITIVITY*H/b.height,0,H-1); }
 function canvasMetrics(){ const b=canvas.getBoundingClientRect(); const scale=Math.min(b.width/W,b.height/H)||1; const contentW=W*scale, contentH=H*scale; return {left:b.left+(b.width-contentW)/2, top:b.top+(b.height-contentH)/2, scale}; }
 function canvasPoint(e){ const m=canvasMetrics(); return {x:clamp((e.clientX-m.left)/m.scale,0,W-1), y:clamp((e.clientY-m.top)/m.scale,0,H-1)}; }
 function setCursorFromClient(e){ const p=canvasPoint(e); state.cx=p.x; state.cy=p.y; }
@@ -88,7 +101,7 @@ function drawCursor(){ const use=(at(state.cx,state.cy)?.cursor==='use')||state.
 function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ if(state.verb==='look'&&!state.selectedInv){ interact(o); } else { walkToObj(o); state.pending=(state.verb==='walk'&&!state.selectedInv)?null:o; } } else { deselectVerb(); state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); state.pending=null; } }
 canvas.addEventListener('mousemove',e=>{ if(!touchCursorToggle.checked) setCursorFromClient(e); });
 canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; if(!touchCursorToggle.checked) setCursorFromClient(e); triggerCursorClick(); });
-window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.pointerType!=='touch') return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
+window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.button>0) return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
 window.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD) touchState.moved=true; moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
 window.addEventListener('pointerup',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const wasDrag=touchState.moved; touchState.active=false; touchState.suppressClickUntil=performance.now()+500; if(!wasDrag) triggerCursorClick(); e.preventDefault(); },{passive:false});
 fullscreenToggle?.addEventListener('change',async()=>{
