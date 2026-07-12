@@ -2425,8 +2425,9 @@ static int yaat_save_script_state(const char *path, const char *slot_label)
         fprintf(file, "meta_play_time_ms %lu\n", g_animation_clock_ms);
         fprintf(file, "meta_timestamp %s\n", timestamp);
     }
-    fprintf(file, "player %d %d %d %d %d %s\n", g_player_x, g_player_y,
+    fprintf(file, "player %d %d %d %d %d %d %s\n", g_player_x, g_player_y,
             g_target_x, g_target_y, g_player_facing_right,
+            g_player_facing_vertical,
             g_player_animation_id);
     fprintf(file, "current_room %s\n",
             (g_current_room >= 0 && g_current_room < g_room_count) ?
@@ -2496,9 +2497,15 @@ static int yaat_load_script_state(const char *path)
             char discard[128];
             fgets(discard, sizeof(discard), file);
         } else if (strcmp(key, "player") == 0) {
-            fscanf(file, "%d %d %d %d %d %63s", &g_player_x, &g_player_y,
-                   &g_target_x, &g_target_y, &g_player_facing_right,
-                   g_player_animation_id);
+            if (fscanf(file, "%d %d %d %d %d", &g_player_x, &g_player_y,
+                       &g_target_x, &g_target_y,
+                       &g_player_facing_right) == 5) {
+                if (fscanf(file, "%d %63s", &g_player_facing_vertical,
+                           g_player_animation_id) != 2) {
+                    g_player_facing_vertical = 0;
+                    fscanf(file, "%63s", g_player_animation_id);
+                }
+            }
         } else if (strcmp(key, "current_room") == 0) {
             if (fscanf(file, "%63s", value) == 1) {
                 int idx = yaat_room_index_by_id(value);
@@ -4283,11 +4290,8 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
         yaat_default_action_sentence("walk");
         return;
     }
-    if (backbuffer_x < g_player_x) {
-        g_player_facing_right = 0;
-    } else if (backbuffer_x > g_player_x) {
-        g_player_facing_right = 1;
-    }
+    (void)yaat_player_walk_animation_for_delta(backbuffer_x - g_player_x,
+                                               backbuffer_y - g_player_y);
     yaat_set_player_target(backbuffer_x, backbuffer_y);
     yaat_click_game(backbuffer_x, backbuffer_y, 0);
 }
