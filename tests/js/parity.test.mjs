@@ -73,3 +73,41 @@ test('JavaScript VM mutates explicit game state and returns host effects', () =>
   assert.deepEqual(state.object('key_obj'), { visible: true, x: 30, y: 40, w: 8, h: 8, sprite: '' });
   assert.deepEqual(state.player, { x: 50, y: 60, visible: true });
 });
+
+test('JavaScript VM matches C condition semantics for inventory and mixed ordering', () => {
+  const command = (kind, fields = {}) => ({
+    kind,
+    a: '',
+    b: '',
+    stringId: '',
+    boolValue: 0,
+    intValue: 0,
+    value: { kind: VALUE_KIND.BOOL, bool: false, int: 0, string: '' },
+    conditionOp: CONDITION_OP.TRUTHY,
+    firstChild: 0,
+    childCount: 0,
+    firstElseChild: 0,
+    elseChildCount: 0,
+    ...fields,
+  });
+  const pkg = {
+    vars: [
+      { name: 'code', value: { kind: VALUE_KIND.STRING, bool: false, int: 0, string: '10' } },
+    ],
+    rooms: [{ id: 'start', label: 'Start', color: 0, events: [], entities: [] }],
+    commands: [
+      command(COMMAND_KIND.IF, { a: 'inventory', b: 'key', firstChild: 2, childCount: 1, firstElseChild: 3, elseChildCount: 1 }),
+      command(COMMAND_KIND.IF, { a: 'code', conditionOp: CONDITION_OP.LT, value: { kind: VALUE_KIND.STRING, bool: false, int: 0, string: '2' }, firstChild: 4, childCount: 1, firstElseChild: 5, elseChildCount: 1 }),
+      command(COMMAND_KIND.SAY, { a: 'narrator', b: 'has key' }),
+      command(COMMAND_KIND.SAY, { a: 'narrator', b: 'missing key' }),
+      command(COMMAND_KIND.TAKE, { a: 'lexical-success' }),
+      command(COMMAND_KIND.TAKE, { a: 'numeric-mismatch' }),
+    ],
+    globalEvents: [],
+  };
+  const state = new GameState(pkg, { inventory: ['key'] });
+  const vm = new ScriptVm(pkg, state);
+
+  assert.deepEqual(vm.runCommands(0, 2).map(e => e.type === 'say' ? e.text : e.item), ['has key', 'lexical-success']);
+  assert.deepEqual(state.inventory, ['key', 'lexical-success']);
+});
