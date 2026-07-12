@@ -6,27 +6,44 @@
 <title>YAAT HTML5</title>
 <style>
   :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#101018; color:#eee; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; overscroll-behavior:none; }
   main { text-align:center; }
-  canvas { width:min(96vw, 960px); image-rendering:pixelated; image-rendering:crisp-edges; border:2px solid #505060; background:#000; cursor:none; }
+  main:fullscreen { width:100vw; height:100vh; display:grid; place-items:center; background:#000; }
+  main:fullscreen canvas { width:100vw; height:100vh; max-width:none; border:0; object-fit:contain; }
+  canvas { width:min(96vw, 960px); image-rendering:pixelated; image-rendering:crisp-edges; border:2px solid #505060; background:#000; cursor:none; touch-action:none; }
   p { margin:.6rem 0 0; color:#b8b8c8; font-size:14px; }
+  .controls { margin-top:.75rem; display:flex; justify-content:center; align-items:center; gap:.75rem; flex-wrap:wrap; color:#d8d8e8; font-size:14px; }
+  button { color:#eee; background:#303040; border:1px solid #606078; border-radius:4px; padding:.35rem .65rem; }
+  label { user-select:none; }
+  main:fullscreen .controls, main:fullscreen p { position:fixed; left:50%; transform:translateX(-50%); background:rgba(16,16,24,.75); padding:.35rem .6rem; border-radius:4px; }
+  main:fullscreen .controls { bottom:.8rem; }
+  main:fullscreen p { bottom:3rem; }
 </style>
 </head>
 <body>
 <main>
   <canvas id="game" width="320" height="240" aria-label="YAAT placeholder demo"></canvas>
-  <p>Left click playfield to interact. Choose verbs and inventory from the lower bar.</p>
+  <div class="controls">
+    <button id="fullscreen" type="button">Enter fullscreen</button>
+    <label><input id="touch-cursor" type="checkbox"> Touch cursor mode</label>
+  </div>
+  <p>Left click playfield to interact. Choose verbs and inventory from the lower bar. Touch cursor mode lets you drag anywhere to move the cursor and tap anywhere to click it.</p>
 </main>
 <script>
 (() => {
 'use strict';
 const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000;
 const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
+const shell=document.querySelector('main'), fullscreenButton=document.getElementById('fullscreen'), touchCursorToggle=document.getElementById('touch-cursor');
+const touchState={active:false,id:-1,lastX:0,lastY:0,moved:false,suppressClickUntil:0};
 const imageCache=new Map();
 function img(path){ if(!imageCache.has(path)){ const im=new Image(); im.src='game/'+path; imageCache.set(path,im);} return imageCache.get(path); }
 function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w|0,h|0); }
 function text(s,x,y,c='#f0e8d0'){ ctx.fillStyle=c; ctx.font='8px monospace'; ctx.textBaseline='top'; ctx.fillText(s,x,y); }
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function canvasPoint(e){ const b=canvas.getBoundingClientRect(); return {x:clamp((e.clientX-b.left)*W/b.width,0,W-1), y:clamp((e.clientY-b.top)*H/b.height,0,H-1)}; }
+function setCursorFromClient(e){ const p=canvasPoint(e); state.cx=p.x; state.cy=p.y; }
+function moveCursorByClientDelta(dx,dy){ const b=canvas.getBoundingClientRect(); state.cx=clamp(state.cx+dx*W/b.width,0,W-1); state.cy=clamp(state.cy+dy*H/b.height,0,H-1); }
 function hashColor(s, fallback){ let h=fallback; for (const ch of s) h=((h*33)^ch.charCodeAt(0))>>>0; return '#'+(h&0xffffff).toString(16).padStart(6,'0'); }
 const verbs=['look','use','talk','take','open','close'];
 const inventoryDefs={ brass_key:{name:'Brass Key', icon:'inventory/icons/brass_key.bmp', description:'A small brass key with worn teeth.'} };
@@ -64,8 +81,14 @@ function draw(){ const now=performance.now(); if(now<state.splashUntil){ drawSpl
 function drawUI(){ rect(0,PLAY_H,W,40,'#101018'); verbs.forEach((v,i)=>{ const x=4+(i%3)*50,y=PLAY_H+3+(i/3|0)*15; rect(x,y,48,13,v===state.verb?'#6a5430':'#303040'); text(v,x+5,y+3); }); state.inv.forEach((id,i)=>{ const x=164+i*23,y=PLAY_H+4; rect(x,y,20,20,id===state.selectedInv?'#806020':'#404048'); rect(x+1,y+1,18,18,'#202028'); drawBmp(inventoryDefs[id].icon,x+2,y+2,16,16); }); const hover=state.cy<PLAY_H&&at(state.cx,state.cy); text((state.selectedInv?`use ${inventoryDefs[state.selectedInv].name} with `:state.verb+' ')+(hover?hover.name:''),164,PLAY_H+28,'#d8d0b8'); }
 function drawDialogue(){ if(!state.dialog) return; rect(16,10,288,26,'rgba(0,0,0,.75)'); text(state.dialog.speaker+':',24,16,'#ffe070'); text(state.dialog.msg,24,26,'#fff'); }
 function drawCursor(){ const use=(at(state.cx,state.cy)?.cursor==='use')||state.selectedInv||state.verb==='use'; rect(state.cx,state.cy,2,14,'#000'); rect(state.cx+2,state.cy+2,2,10,'#000'); rect(state.cx+4,state.cy+4,2,8,'#000'); rect(state.cx+6,state.cy+6,2,6,'#000'); rect(state.cx+8,state.cy+8,2,4,'#000'); rect(state.cx+1,state.cy+1,1,11,use?'#ffe070':'#fff'); rect(state.cx+2,state.cy+3,2,7,use?'#ffe070':'#fff'); rect(state.cx+4,state.cy+5,2,5,use?'#ffe070':'#fff'); rect(state.cx+6,state.cy+7,2,3,use?'#ffe070':'#fff'); }
-canvas.addEventListener('mousemove',e=>{ const b=canvas.getBoundingClientRect(); state.cx=clamp((e.clientX-b.left)*W/b.width,0,W-1); state.cy=clamp((e.clientY-b.top)*H/b.height,0,H-1); });
-canvas.addEventListener('click',e=>{ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ walkToObj(o); state.pending=o; } else { state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); state.pending=null; } });
+function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ walkToObj(o); state.pending=o; } else { state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); state.pending=null; } }
+canvas.addEventListener('mousemove',e=>{ if(!touchCursorToggle.checked) setCursorFromClient(e); });
+canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; if(!touchCursorToggle.checked) setCursorFromClient(e); triggerCursorClick(); });
+window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.pointerType!=='touch') return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.moved=false; if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
+window.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; if(Math.hypot(dx,dy)>1) touchState.moved=true; moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
+window.addEventListener('pointerup',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; touchState.active=false; touchState.suppressClickUntil=performance.now()+500; triggerCursorClick(); e.preventDefault(); },{passive:false});
+fullscreenButton?.addEventListener('click',async()=>{ if(document.fullscreenElement){ await document.exitFullscreen(); } else { await shell.requestFullscreen(); } });
+document.addEventListener('fullscreenchange',()=>{ fullscreenButton.textContent=document.fullscreenElement?'Exit fullscreen':'Enter fullscreen'; });
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 go('room000_start',160,100); loop();
 })();
