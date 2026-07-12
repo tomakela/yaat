@@ -14,26 +14,12 @@ WATCOM_CFLAGS = -q -bt=nt -i=src -os -w3
 WATCOM_LDFLAGS = -l=win95
 WATCOM_LIBS = user32.lib gdi32.lib winmm.lib
 
-WIN32_SOURCES = \
-	src/main_win32.c \
-	src/platform/win32/gdi_renderer.c \
-	src/platform/win32/audio_winmm.c \
-	src/script_tokenizer.c \
-	src/script_parser.c \
-	src/script_package.c \
-	src/script_bytecode.c
+ENGINE_SOURCE_MANIFEST = scripts/engine_sources.txt
+SOURCES = $(shell sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' $(ENGINE_SOURCE_MANIFEST))
+WIN32_SOURCES = $(SOURCES)
+ENGINE_RUNTIME_SOURCES = $(SOURCES)
 
-# Keep this runtime source list in sync with scripts/build_engine_*.bat and docs/toolchain-compatibility.md.
-ENGINE_RUNTIME_SOURCES = \
-	src/runtime/asset_loader.c \
-	src/runtime/zip_archive.c \
-	src/third_party/miniz/miniz.c \
-	src/third_party/miniz/miniz_zip.c \
-	src/third_party/miniz/miniz_tinfl.c
-
-SOURCES = $(WIN32_SOURCES) $(ENGINE_RUNTIME_SOURCES)
-
-.PHONY: all clean print-sources check yaatc fixtures asset-store-smoke js-parity asset-validate
+.PHONY: all clean print-sources check check-source-manifest yaatc fixtures asset-store-smoke js-parity asset-validate
 
 all: $(EXE)
 
@@ -44,10 +30,22 @@ $(EXE): $(SOURCES)
 print-sources:
 	@printf '%s\n' $(SOURCES)
 
+check-source-manifest:
+	@tmp=$$(mktemp); \
+	printf '%s\n' $(SOURCES) > $$tmp; \
+	sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$$$/d' $(ENGINE_SOURCE_MANIFEST) | cmp -s $$tmp -; \
+	status=$$?; rm -f $$tmp; exit $$status
+	@for file in scripts/build_engine_*.bat README.md docs/toolchain-compatibility.md; do \
+		if ! grep -q "$(ENGINE_SOURCE_MANIFEST)" $$file; then \
+			echo "$$file does not reference $(ENGINE_SOURCE_MANIFEST)"; \
+			exit 1; \
+		fi; \
+	done
+
 clean:
 	rm -rf $(BUILD_DIR)
 
-check: fixtures asset-store-smoke js-parity asset-validate
+check: check-source-manifest fixtures asset-store-smoke js-parity asset-validate
 
 
 YAATC = $(BUILD_DIR)/yaatc
