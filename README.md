@@ -118,15 +118,12 @@ For Windows 95 testing, copy the executable to the target machine or VM. The Ope
 
 ## Quick checks
 
-Build and run the offline asset validator from the repository root:
+Run the portable correctness checks from the repository root:
 
 ```sh
-cc -std=c99 -Wall -Wextra -pedantic -o tools/asset_validate/asset_validate tools/asset_validate/asset_validate.c
-./tools/asset_validate/asset_validate game
+make check
 ```
 
-Compile the script tokenizer as a standalone consistency check:
+This builds the script bytecode compiler and fixture bytecode, runs the runtime asset-store smoke test, executes the JavaScript/C bytecode parity tests with Node.js, and validates the loose `game/` asset tree.
 
-```sh
-cc -std=c99 -Wall -Wextra -pedantic -c src/script_tokenizer.c -o /tmp/script_tokenizer.o
-```
+The default `make` target still builds the Windows 95 engine shell and requires Open Watcom (`wcl386`) to be available in the environment.
