@@ -7,25 +7,24 @@
 <style>
   :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#101018; color:#eee; }
   body { margin:0; min-height:100vh; display:grid; place-items:center; overscroll-behavior:none; }
-  main { text-align:center; }
+  main { position:relative; text-align:center; }
   main:fullscreen { width:100vw; height:100vh; display:grid; place-items:center; background:#000; }
   main:fullscreen canvas { width:100vw; height:100vh; max-width:none; border:0; object-fit:contain; }
   canvas { width:min(96vw, 960px); image-rendering:pixelated; image-rendering:crisp-edges; border:2px solid #505060; background:#000; cursor:none; touch-action:none; }
   p { margin:.6rem 0 0; color:#b8b8c8; font-size:14px; }
-  .controls { margin-top:.75rem; display:flex; justify-content:center; align-items:center; gap:.75rem; flex-wrap:wrap; color:#d8d8e8; font-size:14px; }
-  button { color:#eee; background:#303040; border:1px solid #606078; border-radius:4px; padding:.35rem .65rem; }
-  label { user-select:none; }
-  main:fullscreen .controls, main:fullscreen p { position:fixed; left:50%; transform:translateX(-50%); background:rgba(16,16,24,.75); padding:.35rem .6rem; border-radius:4px; }
-  main:fullscreen .controls { bottom:.8rem; }
-  main:fullscreen p { bottom:3rem; }
+  .controls { position:absolute; top:.45rem; right:.45rem; z-index:2; display:flex; flex-direction:column; align-items:flex-end; gap:.25rem; color:#f0f0ff; font-size:11px; text-align:right; background:rgba(16,16,24,.72); border:1px solid rgba(160,160,190,.55); border-radius:6px; padding:.35rem .45rem; }
+  .controls label { display:flex; align-items:center; gap:.25rem; user-select:none; white-space:nowrap; }
+  .controls input { width:13px; height:13px; margin:0; accent-color:#a0c8ff; }
+  main:fullscreen .controls { position:fixed; top:.8rem; right:.8rem; }
+  main:fullscreen p { position:fixed; left:50%; bottom:.8rem; transform:translateX(-50%); background:rgba(16,16,24,.75); padding:.35rem .6rem; border-radius:4px; }
 </style>
 </head>
 <body>
 <main>
   <canvas id="game" width="320" height="240" aria-label="YAAT placeholder demo"></canvas>
   <div class="controls">
-    <button id="fullscreen" type="button">Enter fullscreen</button>
-    <label><input id="touch-cursor" type="checkbox"> Touch cursor mode</label>
+    <label><input id="fullscreen" type="checkbox"> Full screen</label>
+    <label><input id="touch-cursor" type="checkbox" checked> Touch mode</label>
   </div>
   <p>Left click playfield to interact. Choose verbs and inventory from the lower bar. Touch cursor mode lets you drag anywhere to move the cursor faster than your finger and tap separately to click it.</p>
 </main>
@@ -34,7 +33,7 @@
 'use strict';
 const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000,TOUCH_CURSOR_SENSITIVITY=1.75,TOUCH_DRAG_THRESHOLD=3;
 const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
-const shell=document.querySelector('main'), fullscreenButton=document.getElementById('fullscreen'), touchCursorToggle=document.getElementById('touch-cursor');
+const shell=document.querySelector('main'), fullscreenToggle=document.getElementById('fullscreen'), touchCursorToggle=document.getElementById('touch-cursor');
 const touchState={active:false,id:-1,lastX:0,lastY:0,totalMove:0,moved:false,suppressClickUntil:0};
 const imageCache=new Map();
 function img(path){ if(!imageCache.has(path)){ const im=new Image(); im.src='game/'+path; imageCache.set(path,im);} return imageCache.get(path); }
@@ -87,8 +86,15 @@ canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressCli
 window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.pointerType!=='touch') return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
 window.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD) touchState.moved=true; moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
 window.addEventListener('pointerup',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const wasDrag=touchState.moved; touchState.active=false; touchState.suppressClickUntil=performance.now()+500; if(!wasDrag) triggerCursorClick(); e.preventDefault(); },{passive:false});
-fullscreenButton?.addEventListener('click',async()=>{ if(document.fullscreenElement){ await document.exitFullscreen(); } else { await shell.requestFullscreen(); } });
-document.addEventListener('fullscreenchange',()=>{ fullscreenButton.textContent=document.fullscreenElement?'Exit fullscreen':'Enter fullscreen'; });
+fullscreenToggle?.addEventListener('change',async()=>{
+  if(fullscreenToggle.checked){
+    try { await shell.requestFullscreen(); }
+    catch { fullscreenToggle.checked=false; }
+  } else if(document.fullscreenElement){
+    await document.exitFullscreen();
+  }
+});
+document.addEventListener('fullscreenchange',()=>{ fullscreenToggle.checked=document.fullscreenElement===shell; });
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 go('room000_start',160,100); loop();
 })();
