@@ -1,3 +1,8 @@
+// JavaScript parity harness: script-visible mutable state.
+// Owns the state that C script commands mutate: current room, variables,
+// inventory, object visibility/position/sprite metadata, and player state.
+// Snapshot output is intentionally plain data so parity tests can compare it
+// with C runtime save/state behavior as coverage grows.
 import { VALUE_KIND } from './bytecodeLoader.js';
 export function cloneValue(v){ return { kind:v?.kind ?? VALUE_KIND.BOOL, bool:!!v?.bool, int:v?.int|0, string:v?.string ?? '' }; }
 export class GameState {

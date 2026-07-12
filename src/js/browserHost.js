@@ -1,3 +1,7 @@
+// Browser host integration demo for the JavaScript parity harness.
+// This file is intentionally the DOM edge: it composes GameState and ScriptVm
+// with canvas input/drawing for a tiny demo, while the core src/js modules stay
+// free of window/document dependencies. It is not a full browser engine yet.
 import { GameState, ScriptVm } from './index.js';
 const W=320,H=240,PLAY_H=200,SPLASH_MS=2000;
 const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;

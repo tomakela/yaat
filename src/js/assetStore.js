@@ -1,3 +1,8 @@
+// JavaScript parity harness: asset access boundary.
+// Models the C runtime's winning-asset lookup by querying ordered layers where
+// earlier layers take precedence over later layers (for example loose files,
+// patches, then base archive). The layers are adapters; archive parsing and
+// browser fetching are host concerns rather than VM behavior.
 export class AssetStore {
   constructor(layers=[]){ this.layers=layers; }
   addLayer(layer){ this.layers.push(layer); return this; }

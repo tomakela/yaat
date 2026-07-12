@@ -1,3 +1,8 @@
+// JavaScript parity harness: VM execution boundary.
+// Executes decoded command records against GameState in deterministic order and
+// emits structured effects that correspond to the side effects performed by the
+// C runtime. Rendering, audio, timing, and host callbacks stay outside this
+// module so tests can compare script-visible behavior directly.
 import { COMMAND_KIND as K, CONDITION_OP as C, VALUE_KIND } from './bytecodeLoader.js';
 import { valueTruthy, valueEquals } from './gameState.js';
 export class ScriptVm {
