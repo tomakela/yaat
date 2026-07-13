@@ -3535,7 +3535,6 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
     yaat_pending_interaction_clear();
     yaat_pending_room_change_clear();
     if (g_selected_verb[0] != '\0') {
-        yaat_default_action_sentence(g_selected_verb);
         yaat_deselect_action();
         return;
     }
