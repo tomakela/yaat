@@ -126,6 +126,7 @@ static YaatHoverTargetKind g_hover_target_kind = YAAT_HOVER_EMPTY;
 static char g_hover_target_id[YAAT_ASSET_MAX_NAME];
 static char g_hover_target_name[YAAT_ASSET_MAX_NAME];
 static char g_command_feedback[YAAT_COMMAND_FEEDBACK_MAX];
+static char g_command_feedback_override[YAAT_COMMAND_FEEDBACK_MAX];
 
 static YaatSaveMenuMode g_save_menu_mode;
 static int g_save_menu_selected_slot;
@@ -602,6 +603,9 @@ static void yaat_format_command_feedback(const char *verb, const char *object,
     if (display_verb[0] != '\0') {
         display_verb[0] = (char)toupper((unsigned char)display_verb[0]);
     }
+    if (strcmp(display_verb, "Look") == 0) {
+        yaat_copy(display_verb, sizeof(display_verb), "Look at", strlen("Look at"));
+    }
     if (object != 0 && object[0] != '\0' && target != 0 && target[0] != '\0') {
         sprintf(g_command_feedback, "%s %s with %s",
                 display_verb, object, target);
@@ -617,11 +621,25 @@ static void yaat_format_command_feedback(const char *verb, const char *object,
     g_command_feedback[sizeof(g_command_feedback) - 1] = '\0';
 }
 
+static void yaat_set_look_command_feedback(const char *target)
+{
+    yaat_format_command_feedback("look", "", target != 0 ? target : "");
+    yaat_copy(g_command_feedback_override, sizeof(g_command_feedback_override),
+              g_command_feedback, strlen(g_command_feedback));
+}
+
 static void yaat_update_command_feedback(void)
 {
     const char *verb = yaat_active_verb();
     const char *hover_name = yaat_hover_target_display_name();
     const char *target = g_hover_target_kind != YAAT_HOVER_EMPTY ? hover_name : "";
+
+    if (g_dialogue_visible && g_command_feedback_override[0] != '\0') {
+        yaat_copy(g_command_feedback, sizeof(g_command_feedback),
+                  g_command_feedback_override, strlen(g_command_feedback_override));
+        return;
+    }
+    g_command_feedback_override[0] = '\0';
 
     if (strcmp(verb, "use") == 0 && g_selected_inventory[0] != '\0') {
         yaat_format_command_feedback(verb,
@@ -3028,6 +3046,7 @@ static int yaat_runtime_longclick_game(int x, int y)
             if (!yaat_runtime_ini_hit(path, x, y, id, sizeof(id), event_name, sizeof(event_name))) {
                 yaat_copy(id, sizeof(id), object->id, strlen(object->id));
             }
+            yaat_set_look_command_feedback(object->name[0] != '\0' ? object->name : id);
             yaat_runtime_execute_entity_longclick(id);
             return 1;
         }
@@ -3040,6 +3059,7 @@ static int yaat_runtime_longclick_game(int x, int y)
             y < hotspot->y + hotspot->height) {
             yaat_pending_interaction_clear();
             yaat_pending_room_change_clear();
+            yaat_set_look_command_feedback(hotspot->name[0] != '\0' ? hotspot->name : hotspot->id);
             yaat_runtime_execute_entity_longclick(hotspot->id);
             return 1;
         }
@@ -3159,6 +3179,7 @@ static void yaat_click_inventory_item(const char *item)
     if (event != 0) {
         yaat_execute_event(event);
     } else if (strcmp(verb, "look") == 0 && (runtime_item = yaat_find_runtime_inventory_item(item)) != 0 && runtime_item->description[0] != '\0') {
+        yaat_set_look_command_feedback(yaat_runtime_inventory_item_display_name(item));
         yaat_player_say(runtime_item->description);
         yaat_deselect_action();
     } else {
@@ -3177,12 +3198,15 @@ static void yaat_longclick_inventory_item(const char *item)
     yaat_pending_room_change_clear();
     entity = yaat_entity_by_id_any_room(item);
     if (entity != 0) {
+        yaat_set_look_command_feedback(yaat_runtime_inventory_item_display_name(item));
         yaat_execute_entity_verb(entity, "longclick", 0, "look");
     } else if ((runtime_item = yaat_find_runtime_inventory_item(item)) != 0 &&
                runtime_item->description[0] != '\0') {
+        yaat_set_look_command_feedback(yaat_runtime_inventory_item_display_name(item));
         yaat_player_say(runtime_item->description);
         yaat_deselect_action();
     } else {
+        yaat_set_look_command_feedback(yaat_runtime_inventory_item_display_name(item));
         yaat_default_inventory_action_sentence("look");
         yaat_deselect_action();
     }
@@ -3202,6 +3226,7 @@ static void yaat_longclick_game(int x, int y)
         if (e->visible && x >= e->x && y >= e->y && x < e->x + e->w && y < e->y + e->h) {
             yaat_pending_interaction_clear();
             yaat_pending_room_change_clear();
+            yaat_set_look_command_feedback(e->name[0] != '\0' ? e->name : e->id);
             yaat_execute_entity_verb(e, "longclick", 0, "look");
             return;
         }
