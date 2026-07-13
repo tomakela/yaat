@@ -12,9 +12,9 @@
 <title>YAAT HTML5</title>
 <style>
   :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#101018; color:#eee; }
-  html, body { width:100%; height:100%; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center; overscroll-behavior:none; background:#000; }
-  main { position:relative; text-align:center; touch-action:none; }
+  html, body { width:100%; height:100%; overscroll-behavior:none; touch-action:none; -webkit-text-size-adjust:100%; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; overscroll-behavior:none; background:#000; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  main { position:relative; text-align:center; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
   main:fullscreen { width:100vw; height:100vh; display:grid; place-items:center; background:#000; }
   main:fullscreen canvas { width:min(100vw, calc(100vh * 4 / 3)); height:auto; max-width:none; border:0; }
   canvas { width:min(96vw, 960px); max-height:calc(100vh - 4.5rem); image-rendering:pixelated; image-rendering:crisp-edges; border:2px solid #505060; background:#000; cursor:none; touch-action:none; }
@@ -41,7 +41,7 @@
 'use strict';
 const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000,DIALOG_MS=2400,TOUCH_CURSOR_SENSITIVITY=1.75,TOUCH_DRAG_THRESHOLD=3,TOUCH_LONGPRESS_MS=550;
 const canvas=document.getElementById('game'), main=document.querySelector('main'), fullscreenBtn=document.getElementById('fullscreenBtn'), touchModeInput=document.getElementById('touchMode'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
-const touchState={active:false,id:-1,lastX:0,lastY:0,totalMove:0,moved:false,longTimer:0,longFired:false,suppressClickUntil:0};
+const touchState={active:false,id:-1,lastX:0,lastY:0,totalMove:0,moved:false,longTimer:0,longFired:false,suppressClickUntil:0,captureTarget:null};
 touchModeInput.checked=true;
 function isTouchMode(){ return touchModeInput.checked; }
 function updateFullscreenButton(){ fullscreenBtn.textContent=document.fullscreenElement?'Exit full screen':'Full screen'; }
@@ -52,7 +52,7 @@ touchModeInput.addEventListener('change',()=>{ touchState.active=false; clearTou
 document.addEventListener('fullscreenchange',()=>{ updateFullscreenButton(); if(document.fullscreenElement) lockLandscapeIfPossible(); });
 updateFullscreenButton();
 function clearTouchLongPress(){ if(touchState.longTimer){ clearTimeout(touchState.longTimer); touchState.longTimer=0; } }
-function endTouchCursor(e, triggerTap=true){ if(!touchState.active || e.pointerId!==touchState.id) return false; const wasDrag=touchState.moved, wasLong=touchState.longFired; touchState.active=false; clearTouchLongPress(); touchState.suppressClickUntil=performance.now()+500; if(triggerTap&&!wasDrag&&!wasLong) triggerCursorClick(); return true; }
+function endTouchCursor(e, triggerTap=true){ if(!touchState.active || e.pointerId!==touchState.id) return false; const wasDrag=touchState.moved, wasLong=touchState.longFired; touchState.active=false; clearTouchLongPress(); touchState.captureTarget?.releasePointerCapture?.(e.pointerId); touchState.captureTarget=null; touchState.suppressClickUntil=performance.now()+500; if(triggerTap&&!wasDrag&&!wasLong) triggerCursorClick(); return true; }
 const imageCache=new Map();
 function img(path){ if(!imageCache.has(path)){ const im=new Image(); im.src='game/'+path; imageCache.set(path,im);} return imageCache.get(path); }
 function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w|0,h|0); }
@@ -109,10 +109,12 @@ function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.sp
 function isControlEvent(e){ return e.target.closest?.('.controls'); }
 canvas.addEventListener('mousemove',e=>setCursorFromClient(e));
 canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; setCursorFromClient(e); triggerCursorClick(); });
-main.addEventListener('pointerdown',e=>{ if(isControlEvent(e)||!isTouchMode()||e.pointerType==='mouse'||e.button>0) return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; clearTouchLongPress(); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId&&!touchState.moved){ touchState.longFired=true; touchState.longTimer=0; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); main.setPointerCapture?.(e.pointerId); e.preventDefault(); },{passive:false});
-main.addEventListener('pointermove',e=>{ if(!isTouchMode()||!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD){ touchState.moved=true; clearTouchLongPress(); } moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
-main.addEventListener('pointerup',e=>{ if(!isTouchMode()||!endTouchCursor(e)) return; e.preventDefault(); },{passive:false});
-main.addEventListener('pointercancel',e=>{ if(isTouchMode()&&endTouchCursor(e,false)) e.preventDefault(); },{passive:false});
+document.addEventListener('contextmenu',e=>{ if(isTouchMode()&&!isControlEvent(e)) e.preventDefault(); },{passive:false});
+document.addEventListener('selectstart',e=>{ if(isTouchMode()&&!isControlEvent(e)) e.preventDefault(); },{passive:false});
+document.addEventListener('pointerdown',e=>{ if(isControlEvent(e)||!isTouchMode()||e.pointerType==='mouse'||e.button>0) return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; touchState.captureTarget=e.target; clearTouchLongPress(); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId&&!touchState.moved){ touchState.longFired=true; touchState.longTimer=0; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); touchState.captureTarget?.setPointerCapture?.(e.pointerId); e.preventDefault(); },{passive:false});
+document.addEventListener('pointermove',e=>{ if(!isTouchMode()||!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD){ touchState.moved=true; clearTouchLongPress(); } moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
+document.addEventListener('pointerup',e=>{ if(!isTouchMode()||!endTouchCursor(e)) return; e.preventDefault(); },{passive:false});
+document.addEventListener('pointercancel',e=>{ if(isTouchMode()&&endTouchCursor(e,false)) e.preventDefault(); },{passive:false});
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('./sw.js').then(reg=>reg.update()).catch(()=>{}); }); }
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 go('room000_start',160,100); loop();
