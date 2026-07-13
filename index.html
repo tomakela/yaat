@@ -17,10 +17,12 @@
   main { position:relative; text-align:center; }
   main:fullscreen { width:100vw; height:100vh; display:grid; place-items:center; background:#000; }
   main:fullscreen canvas { width:min(100vw, calc(100vh * 4 / 3)); height:auto; max-width:none; border:0; }
-  canvas { width:min(96vw, 960px); image-rendering:pixelated; image-rendering:crisp-edges; border:2px solid #505060; background:#000; cursor:none; touch-action:none; }
+  canvas { width:min(96vw, 960px); max-height:calc(100vh - 4.5rem); image-rendering:pixelated; image-rendering:crisp-edges; border:2px solid #505060; background:#000; cursor:none; touch-action:none; }
   p { margin:.6rem 0 0; color:#b8b8c8; font-size:14px; }
   .controls { position:absolute; top:.45rem; right:.45rem; z-index:2; display:flex; flex-direction:column; align-items:flex-end; gap:.25rem; color:#f0f0ff; font-size:11px; text-align:right; background:rgba(16,16,24,.72); border:1px solid rgba(160,160,190,.55); border-radius:6px; padding:.35rem .45rem; }
   .controls label { display:flex; align-items:center; gap:.25rem; user-select:none; white-space:nowrap; }
+  .controls button { color:#f0f0ff; background:#303040; border:1px solid #8080a0; border-radius:4px; padding:.2rem .45rem; font:inherit; }
+  .controls button:active { background:#505068; }
   .controls input { width:13px; height:13px; margin:0; accent-color:#a0c8ff; }
   main:fullscreen .controls { position:fixed; top:.8rem; right:.8rem; }
   main:fullscreen p { position:fixed; left:50%; bottom:.8rem; transform:translateX(-50%); background:rgba(16,16,24,.75); padding:.35rem .6rem; border-radius:4px; }
@@ -30,15 +32,26 @@
 <main>
   <canvas id="game" width="320" height="240" aria-label="YAAT placeholder demo"></canvas>
   <div class="controls" aria-live="polite">
-Touch mode available when installed
+    <button id="fullscreenBtn" type="button">Full screen</button>
+    <label><input id="touchMode" type="checkbox"> Touch mode</label>
   </div>
 </main>
 <script>
 (() => {
 'use strict';
 const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000,DIALOG_MS=2400,TOUCH_CURSOR_SENSITIVITY=1.75,TOUCH_DRAG_THRESHOLD=3,TOUCH_LONGPRESS_MS=550;
-const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
-const touchState={active:false,id:-1,lastX:0,lastY:0,totalMove:0,moved:false,longTimer:0,longFired:false,suppressClickUntil:0};
+const canvas=document.getElementById('game'), main=document.querySelector('main'), fullscreenBtn=document.getElementById('fullscreenBtn'), touchModeInput=document.getElementById('touchMode'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
+const isStandalone=matchMedia('(display-mode: standalone)').matches||matchMedia('(display-mode: fullscreen)').matches||navigator.standalone===true;
+const touchState={active:isStandalone,id:-1,lastX:0,lastY:0,totalMove:0,moved:false,longTimer:0,longFired:false,suppressClickUntil:0};
+touchModeInput.checked=touchState.active;
+function isTouchMode(){ return touchModeInput.checked; }
+function updateFullscreenButton(){ fullscreenBtn.textContent=document.fullscreenElement?'Exit full screen':'Full screen'; }
+async function lockLandscapeIfPossible(){ try{ if(screen.orientation?.lock) await screen.orientation.lock('landscape'); }catch(_){} }
+async function toggleFullscreen(){ if(document.fullscreenElement){ await document.exitFullscreen?.(); return; } await main.requestFullscreen?.(); await lockLandscapeIfPossible(); }
+fullscreenBtn.addEventListener('click',()=>toggleFullscreen().catch(()=>{}));
+touchModeInput.addEventListener('change',()=>{ touchState.active=false; clearTouchLongPress(); });
+document.addEventListener('fullscreenchange',()=>{ updateFullscreenButton(); if(document.fullscreenElement) lockLandscapeIfPossible(); });
+updateFullscreenButton();
 function clearTouchLongPress(){ if(touchState.longTimer){ clearTimeout(touchState.longTimer); touchState.longTimer=0; } }
 function endTouchCursor(e, triggerTap=true){ if(!touchState.active || e.pointerId!==touchState.id) return false; const wasDrag=touchState.moved, wasLong=touchState.longFired; touchState.active=false; clearTouchLongPress(); touchState.suppressClickUntil=performance.now()+500; if(triggerTap&&!wasDrag&&!wasLong) triggerCursorClick(); return true; }
 const imageCache=new Map();
@@ -96,10 +109,10 @@ function drawCursor(){ const use=(at(state.cx,state.cy)?.cursor==='use')||state.
 function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } if(state.dialog||state.sayQueue.length){ advanceSay(); return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ const command=state.selectedInv?`Use ${inventoryDefs[state.selectedInv].name} with `:(verbLabels[state.verb]||state.verb)+' '; state.actionSentence=command+o.name; if(state.verb==='look'&&!state.selectedInv){ interact(o); } else { walkToObj(o); state.pending=state.verb==='walk'&&!state.selectedInv&&o.inventoryItem?null:o; } } else { state.pending=null; if(state.selectedInv||state.verb!=='walk'){ deselectVerb(); return; } state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); } }
 canvas.addEventListener('mousemove',e=>setCursorFromClient(e));
 canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; setCursorFromClient(e); triggerCursorClick(); });
-canvas.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse'||e.button>0) return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; clearTouchLongPress(); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId&&!touchState.moved){ touchState.longFired=true; touchState.longTimer=0; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); canvas.setPointerCapture?.(e.pointerId); e.preventDefault(); },{passive:false});
-canvas.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD){ touchState.moved=true; clearTouchLongPress(); } moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
-canvas.addEventListener('pointerup',e=>{ if(!endTouchCursor(e)) return; e.preventDefault(); },{passive:false});
-canvas.addEventListener('pointercancel',e=>{ if(endTouchCursor(e,false)) e.preventDefault(); },{passive:false});
+canvas.addEventListener('pointerdown',e=>{ if(!isTouchMode()||e.pointerType==='mouse'||e.button>0) return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; clearTouchLongPress(); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId&&!touchState.moved){ touchState.longFired=true; touchState.longTimer=0; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); canvas.setPointerCapture?.(e.pointerId); e.preventDefault(); },{passive:false});
+canvas.addEventListener('pointermove',e=>{ if(!isTouchMode()||!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD){ touchState.moved=true; clearTouchLongPress(); } moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
+canvas.addEventListener('pointerup',e=>{ if(!isTouchMode()||!endTouchCursor(e)) return; e.preventDefault(); },{passive:false});
+canvas.addEventListener('pointercancel',e=>{ if(isTouchMode()&&endTouchCursor(e,false)) e.preventDefault(); },{passive:false});
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('./sw.js').then(reg=>reg.update()).catch(()=>{}); }); }
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 go('room000_start',160,100); loop();

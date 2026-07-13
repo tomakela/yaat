@@ -4,7 +4,7 @@
   "description": "Yet Another Adventure Tool HTML5 demo.",
   "start_url": "./",
   "scope": "./",
-  "display": "standalone",
+  "display": "fullscreen",
   "orientation": "landscape",
   "background_color": "#000000",
   "theme_color": "#000000",
