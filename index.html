@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="YAAT">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
 <title>YAAT HTML5</title>
 <style>
   :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#101018; color:#eee; }
@@ -27,9 +33,8 @@
 <body>
 <main>
   <canvas id="game" width="320" height="240" aria-label="YAAT placeholder demo"></canvas>
-  <div class="controls">
-    <label><input id="fullscreen" type="checkbox"> Full screen</label>
-    <label><input id="touch-cursor" type="checkbox" checked> Touch mode</label>
+  <div class="controls" aria-live="polite">
+    Touch mode · fullscreen · landscape
   </div>
 </main>
 <script>
@@ -37,7 +42,7 @@
 'use strict';
 const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000,DIALOG_MS=2400,TOUCH_CURSOR_SENSITIVITY=1.75,TOUCH_DRAG_THRESHOLD=3,TOUCH_LONGPRESS_MS=550;
 const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
-const shell=document.querySelector('main'), fullscreenToggle=document.getElementById('fullscreen'), touchCursorToggle=document.getElementById('touch-cursor');
+const shell=document.querySelector('main');
 const touchState={active:false,id:-1,lastX:0,lastY:0,totalMove:0,moved:false,longTimer:0,longFired:false,suppressClickUntil:0};
 function clearTouchLongPress(){
   if(touchState.longTimer){ clearTimeout(touchState.longTimer); touchState.longTimer=0; }
@@ -116,6 +121,13 @@ function draw(){ tickDialogue(); const now=performance.now(); if(now<state.splas
 function drawUI(){ rect(0,PLAY_H,W,40,'#101018'); verbs.forEach((v,i)=>{ const x=4+(i%3)*50,y=PLAY_H+3+(i/3|0)*15; rect(x,y,48,13,v===state.verb?'#6a5430':'#303040'); text(v,x+5,y+3); }); state.inv.forEach((id,i)=>{ const x=164+i*23,y=PLAY_H+4; rect(x,y,20,20,id===state.selectedInv?'#806020':'#404048'); rect(x+1,y+1,18,18,'#202028'); drawBmp(inventoryDefs[id].icon,x+2,y+2,16,16); }); const hover=state.cy<PLAY_H&&at(state.cx,state.cy); const command=state.selectedInv?`Use ${inventoryDefs[state.selectedInv].name} with `:(verbLabels[state.verb]||state.verb)+' '; text(state.actionSentence||command+(hover?hover.name:''),164,PLAY_H+28,'#d8d0b8'); }
 function drawDialogue(){ if(!state.dialog) return; rect(16,10,288,20,'rgba(0,0,0,.75)'); text(state.dialog.msg,24,17,'#fff'); }
 function drawCursor(){ const use=(at(state.cx,state.cy)?.cursor==='use')||state.selectedInv||state.verb==='use'; rect(state.cx,state.cy,2,14,'#000'); rect(state.cx+2,state.cy+2,2,10,'#000'); rect(state.cx+4,state.cy+4,2,8,'#000'); rect(state.cx+6,state.cy+6,2,6,'#000'); rect(state.cx+8,state.cy+8,2,4,'#000'); rect(state.cx+1,state.cy+1,1,11,use?'#ffe070':'#fff'); rect(state.cx+2,state.cy+3,2,7,use?'#ffe070':'#fff'); rect(state.cx+4,state.cy+5,2,5,use?'#ffe070':'#fff'); rect(state.cx+6,state.cy+7,2,3,use?'#ffe070':'#fff'); }
+function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ if(state.verb==='look'&&!state.selectedInv){ interact(o); } else { walkToObj(o); state.pending=state.verb==='walk'&&!state.selectedInv&&o.inventoryItem?null:o; } } else { state.pending=null; if(state.selectedInv||state.verb!=='walk'){ deselectVerb(); return; } state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); } }
+canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; triggerCursorClick(); });
+async function requestFullscreenAndLandscape(){
+  try { if(!document.fullscreenElement && shell.requestFullscreen) await shell.requestFullscreen(); } catch {}
+  try { await screen.orientation?.lock?.('landscape'); } catch {}
+}
+window.addEventListener('pointerdown',e=>{ if(e.button>0) return; requestFullscreenAndLandscape(); touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; clearTouchLongPress(); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId&&!touchState.moved){ touchState.longFired=true; touchState.longTimer=0; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
 function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } if(state.dialog||state.sayQueue.length){ advanceSay(); return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ const command=state.selectedInv?`Use ${inventoryDefs[state.selectedInv].name} with `:(verbLabels[state.verb]||state.verb)+' '; state.actionSentence=command+o.name; if(state.verb==='look'&&!state.selectedInv){ interact(o); } else { walkToObj(o); state.pending=state.verb==='walk'&&!state.selectedInv&&o.inventoryItem?null:o; } } else { state.pending=null; if(state.selectedInv||state.verb!=='walk'){ deselectVerb(); return; } state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); } }
 canvas.addEventListener('mousemove',e=>{ if(!touchCursorToggle.checked) setCursorFromClient(e); });
 canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; if(!touchCursorToggle.checked) setCursorFromClient(e); triggerCursorClick(); });
@@ -123,15 +135,28 @@ window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.bu
 window.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD){ touchState.moved=true; clearTouchLongPress(); } moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
 window.addEventListener('pointerup',e=>{ if(!endTouchCursor(e)) return; e.preventDefault(); },{passive:false});
 window.addEventListener('pointercancel',e=>{ if(endTouchCursor(e,false)) e.preventDefault(); },{passive:false});
-fullscreenToggle?.addEventListener('change',async()=>{
-  if(fullscreenToggle.checked){
-    try { await shell.requestFullscreen(); }
-    catch { fullscreenToggle.checked=false; }
-  } else if(document.fullscreenElement){
-    await document.exitFullscreen();
-  }
-});
-document.addEventListener('fullscreenchange',()=>{ fullscreenToggle.checked=document.fullscreenElement===shell; });
+if('serviceWorker' in navigator){
+  let refreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(refreshing) return;
+    refreshing=true;
+    window.location.reload();
+  });
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').then(reg=>{
+      reg.update();
+      if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
+      reg.addEventListener('updatefound',()=>{
+        const worker=reg.installing;
+        worker?.addEventListener('statechange',()=>{
+          if(worker.state==='installed' && navigator.serviceWorker.controller){
+            worker.postMessage({type:'SKIP_WAITING'});
+          }
+        });
+      });
+    }).catch(()=>{});
+  });
+}
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 go('room000_start',160,100); loop();
 })();
