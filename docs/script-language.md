@@ -345,6 +345,7 @@ Event meaning:
 - `on open`: runs when the player selects the `open` verb and clicks the object or hotspot.
 - `on close`: runs when the player selects the `close` verb and clicks the object or hotspot.
 - `on click`: runs for a generic click or as the default fallback when the clicked target does not define the selected verb event.
+- `on longclick`: runs when the player right-clicks an object, hotspot, or inventory item equivalent target. If this handler is absent, right-click defaults to `on look`; if neither handler exists, the normal look fallback sentence is shown.
 
 ## Verb selection and dispatch
 
@@ -366,7 +367,7 @@ Runtime dispatch uses this order:
 2. If the click is on an inventory item while `use` is selected and no inventory item is selected yet, the runtime stores that inventory item as the selected item.
 3. If the click is on a different inventory item while `use` already has a selected inventory item, the runtime looks for `on use <selected-item>` on the clicked target inventory item.
 4. If the clicked inventory item does not define that exact combination handler, it becomes the newly selected inventory item instead.
-5. If the click is on a room object or hotspot, the runtime first looks for `on <selected-verb>`.
+5. If the click is on a room object or hotspot, the runtime first looks for `on <selected-verb>`. A right-click is treated as `on longclick`, falling back to `on look` by default.
 6. If `use` has a selected inventory item, the runtime first looks for `on use <item>` before trying plain `on use`.
 7. If the selected verb handler is missing, the runtime falls back to `on click`.
 8. If no matching event exists, no commands run.
