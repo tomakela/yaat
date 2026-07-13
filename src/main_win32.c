@@ -2717,9 +2717,9 @@ static void yaat_update_player(void)
         if (yaat_player_motion_complete()) {
             yaat_pending_room_change_maybe_complete();
             yaat_pending_interaction_maybe_complete();
-            yaat_room_change_region_maybe_enter();
         }
     }
+    yaat_room_change_region_maybe_enter();
 
     moving = moved;
     if (moving) {
@@ -2988,7 +2988,6 @@ static void yaat_room_change_region_maybe_enter(void)
     YaatRuntimeHotspot *hotspot;
 
     if (g_pending_room_change || g_pending_interaction || !g_runtime_load.ok) return;
-    if (!yaat_player_motion_complete()) return;
     hotspot = yaat_runtime_hotspot_at(g_player_x, g_player_y);
     if (!yaat_runtime_hotspot_change_room_enabled(hotspot)) return;
     yaat_runtime_change_room(hotspot);
