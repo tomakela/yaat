@@ -39,6 +39,18 @@ const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000,TOUC
 const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
 const shell=document.querySelector('main'), fullscreenToggle=document.getElementById('fullscreen'), touchCursorToggle=document.getElementById('touch-cursor');
 const touchState={active:false,id:-1,lastX:0,lastY:0,totalMove:0,moved:false,longTimer:0,longFired:false,suppressClickUntil:0};
+function clearTouchLongPress(){
+  if(touchState.longTimer){ clearTimeout(touchState.longTimer); touchState.longTimer=0; }
+}
+function endTouchCursor(e, triggerTap=true){
+  if(!touchState.active || e.pointerId!==touchState.id) return false;
+  const wasDrag=touchState.moved, wasLong=touchState.longFired;
+  touchState.active=false;
+  clearTouchLongPress();
+  touchState.suppressClickUntil=performance.now()+500;
+  if(triggerTap&&!wasDrag&&!wasLong) triggerCursorClick();
+  return true;
+}
 const imageCache=new Map();
 function img(path){ if(!imageCache.has(path)){ const im=new Image(); im.src='game/'+path; imageCache.set(path,im);} return imageCache.get(path); }
 function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w|0,h|0); }
@@ -104,9 +116,10 @@ function drawCursor(){ const use=(at(state.cx,state.cy)?.cursor==='use')||state.
 function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ if(state.verb==='look'&&!state.selectedInv){ interact(o); } else { walkToObj(o); state.pending=state.verb==='walk'&&!state.selectedInv&&o.inventoryItem?null:o; } } else { deselectVerb(); state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); state.pending=null; } }
 canvas.addEventListener('mousemove',e=>{ if(!touchCursorToggle.checked) setCursorFromClient(e); });
 canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; if(!touchCursorToggle.checked) setCursorFromClient(e); triggerCursorClick(); });
-window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.button>0) return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; clearTimeout(touchState.longTimer); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId){ touchState.longFired=true; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
-window.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD) touchState.moved=true; moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
-window.addEventListener('pointerup',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const wasDrag=touchState.moved, wasLong=touchState.longFired; touchState.active=false; clearTimeout(touchState.longTimer); touchState.suppressClickUntil=performance.now()+500; if(!wasDrag&&!wasLong) triggerCursorClick(); e.preventDefault(); },{passive:false});
+window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.button>0) return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; clearTouchLongPress(); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId&&!touchState.moved){ touchState.longFired=true; touchState.longTimer=0; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
+window.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD){ touchState.moved=true; clearTouchLongPress(); } moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
+window.addEventListener('pointerup',e=>{ if(!endTouchCursor(e)) return; e.preventDefault(); },{passive:false});
+window.addEventListener('pointercancel',e=>{ if(endTouchCursor(e,false)) e.preventDefault(); },{passive:false});
 fullscreenToggle?.addEventListener('change',async()=>{
   if(fullscreenToggle.checked){
     try { await shell.requestFullscreen(); }
