@@ -13,11 +13,7 @@
 <style>
   :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#101018; color:#eee; }
   html, body { width:100%; height:100%; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center; overscroll-behavior:none; background:#000; touch-action:none; }
-  main { position:relative; width:100vw; height:100vh; display:grid; place-items:center; text-align:center; touch-action:none; }
-  main:fullscreen { background:#000; }
-  main:fullscreen canvas { width:100vw; height:100vh; max-width:none; border:0; object-fit:contain; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center; overscroll-behavior:none; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; overscroll-behavior:none; background:#000; }
   main { position:relative; text-align:center; }
   main:fullscreen { width:100vw; height:100vh; display:grid; place-items:center; background:#000; }
   main:fullscreen canvas { width:min(100vw, calc(100vh * 4 / 3)); height:auto; max-width:none; border:0; }
@@ -34,7 +30,7 @@
 <main>
   <canvas id="game" width="320" height="240" aria-label="YAAT placeholder demo"></canvas>
   <div class="controls" aria-live="polite">
-    Touch mode · fullscreen · landscape
+Touch mode available when installed
   </div>
 </main>
 <script>
@@ -42,33 +38,14 @@
 'use strict';
 const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000,DIALOG_MS=2400,TOUCH_CURSOR_SENSITIVITY=1.75,TOUCH_DRAG_THRESHOLD=3,TOUCH_LONGPRESS_MS=550;
 const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
-const shell=document.querySelector('main');
 const touchState={active:false,id:-1,lastX:0,lastY:0,totalMove:0,moved:false,longTimer:0,longFired:false,suppressClickUntil:0};
-function clearTouchLongPress(){
-  if(touchState.longTimer){ clearTimeout(touchState.longTimer); touchState.longTimer=0; }
-}
-function endTouchCursor(e, triggerTap=true){
-  if(!touchState.active || e.pointerId!==touchState.id) return false;
-  const wasDrag=touchState.moved, wasLong=touchState.longFired;
-  touchState.active=false;
-  clearTouchLongPress();
-  touchState.suppressClickUntil=performance.now()+500;
-  if(triggerTap&&!wasDrag&&!wasLong) triggerCursorClick();
-  return true;
-}
+function clearTouchLongPress(){ if(touchState.longTimer){ clearTimeout(touchState.longTimer); touchState.longTimer=0; } }
+function endTouchCursor(e, triggerTap=true){ if(!touchState.active || e.pointerId!==touchState.id) return false; const wasDrag=touchState.moved, wasLong=touchState.longFired; touchState.active=false; clearTouchLongPress(); touchState.suppressClickUntil=performance.now()+500; if(triggerTap&&!wasDrag&&!wasLong) triggerCursorClick(); return true; }
 const imageCache=new Map();
 function img(path){ if(!imageCache.has(path)){ const im=new Image(); im.src='game/'+path; imageCache.set(path,im);} return imageCache.get(path); }
 function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w|0,h|0); }
 function text(s,x,y,c='#f0e8d0'){ ctx.fillStyle=c; ctx.font='8px monospace'; ctx.textBaseline='top'; ctx.fillText(s,x,y); }
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-function canvasContentRect(){
-  const b=canvas.getBoundingClientRect(), canvasAspect=b.width/b.height, gameAspect=W/H;
-  if(canvasAspect>gameAspect){ const width=b.height*gameAspect; return {left:b.left+(b.width-width)/2, top:b.top, width, height:b.height}; }
-  const height=b.width/gameAspect; return {left:b.left, top:b.top+(b.height-height)/2, width:b.width, height};
-}
-function canvasPoint(e){ const b=canvasContentRect(); return {x:clamp((e.clientX-b.left)*W/b.width,0,W-1), y:clamp((e.clientY-b.top)*H/b.height,0,H-1)}; }
-function setCursorFromClient(e){ const p=canvasPoint(e); state.cx=p.x; state.cy=p.y; }
-function moveCursorByClientDelta(dx,dy){ const b=canvasContentRect(); state.cx=clamp(state.cx+dx*TOUCH_CURSOR_SENSITIVITY*W/b.width,0,W-1); state.cy=clamp(state.cy+dy*TOUCH_CURSOR_SENSITIVITY*H/b.height,0,H-1); }
 function canvasMetrics(){ const b=canvas.getBoundingClientRect(); const scale=Math.min(b.width/W,b.height/H)||1; const contentW=W*scale, contentH=H*scale; return {left:b.left+(b.width-contentW)/2, top:b.top+(b.height-contentH)/2, scale}; }
 function canvasPoint(e){ const m=canvasMetrics(); return {x:clamp((e.clientX-m.left)/m.scale,0,W-1), y:clamp((e.clientY-m.top)/m.scale,0,H-1)}; }
 function setCursorFromClient(e){ const p=canvasPoint(e); state.cx=p.x; state.cy=p.y; }
@@ -88,7 +65,7 @@ const rooms={
     {id:'ending_plaque',name:'Ending Plaque',x:112,y:72,w:96,h:48,cursor:'look',look(){say('narrator','The plaque waits for a final click.');},click(){ if(state.vars.demo_complete) say('narrator','The demo is already complete.'); else { state.vars.demo_complete=true; play('audio/sfx/demo_complete.wav'); say('narrator','Demo complete. Placeholder assets and metadata are consistent.'); } }}],
     objects:[{id:'exit_lamp',name:'Exit Lamp',sprite:'rooms/room002_exit/objects/exit_lamp.bmp',x:236,y:64,w:24,h:48,visible(){return true;},look(){say('player','The lamp uses a placeholder BMP sprite.');},click(){this.look();}}]}
 };
-const state={splashUntil:performance.now()+SPLASH_MS,room:'room000_start',px:160,py:100,tx:160,ty:100,face:1,cx:160,cy:100,verb:'walk',selectedInv:'',inv:[],vars:{door_locked:true,intro_seen:false,took_key:false,demo_complete:false},dialog:null,dialogUntil:0,sayQueue:[],actionSentence:'',shakeUntil:0,shakeMag:0,pending:null,last:performance.now()};
+const state={splashUntil:performance.now()+SPLASH_MS,room:'room000_start',px:160,py:100,tx:160,ty:100,face:1,cx:160,cy:100,verb:'walk',selectedInv:'',inv:[],vars:{door_locked:true,intro_seen:false,took_key:false,demo_complete:false},dialog:null,dialogUntil:0,sayQueue:[],actionSentence:'',shakeUntil:0,shakeMag:0,pending:null};
 function showSay(speaker,msg){ state.dialog={speaker,msg,t:performance.now()}; state.dialogUntil=performance.now()+DIALOG_MS; }
 function say(speaker,msg){ if(state.dialog) state.sayQueue.push({speaker,msg}); else showSay(speaker,msg); }
 function advanceSay(){ const next=state.sayQueue.shift(); if(next) showSay(next.speaker,next.msg); else { state.dialog=null; state.dialogUntil=0; state.actionSentence=''; } }
@@ -99,64 +76,31 @@ function go(id,x=160,y=180){ state.room=id; state.px=state.tx=x; state.py=state.
 function takeKey(){ if(!state.inv.includes('brass_key')) state.inv.push('brass_key'); state.vars.took_key=true; play('audio/sfx/pickup_key.wav'); say('player','I picked up the brass key.'); }
 function useKeyOnDoor(){ if(state.vars.door_locked){ play('audio/sfx/door_unlock.wav'); shake(350,6); state.vars.door_locked=false; say('player','The brass key turns, and the door unlocks.'); } else say('player','The door is already unlocked.'); }
 function deselectVerb(){ state.verb='walk'; state.selectedInv=''; }
-function cant(verb){ const v=verb||'walk'; if(v==='look') say('player',"I don't see anything special."); else if(v==='use') say('player',"I can't use that."); else if(v==='talk') say('player',"I can't talk to that."); else if(v==='take') say('player',"I can't take that."); else if(v==='open') say('player',"I can't open that."); else if(v==='close') say('player',"I can't close that."); else say('player',"I can't do that."); }
+function cant(verb){ const lines={look:"I don't see anything special.",use:"I can't use that.",talk:"I can't talk to that.",take:"I can't take that.",open:"I can't open that.",close:"I can't close that."}; say('player',lines[verb]||"I can't do that."); }
 function roomItems(){ const r=rooms[state.room]; return [...r.hotspots, ...r.objects.filter(o=> typeof o.visible==='function'?o.visible():o.visible!==false)]; }
 function at(x,y){ const a=roomItems(); for(let i=a.length-1;i>=0;i--){ const o=a[i]; if(x>=o.x&&y>=o.y&&x<o.x+o.w&&y<o.y+o.h) return o; } return null; }
-function walkToObj(o){ const x=o.walkX??clamp(o.x+(o.w>>1),PLAYER_W/2,W-PLAYER_W/2), y=o.walkY??clamp(o.y+o.h-1,PLAYER_H,PLAY_H-1); state.tx=x; state.ty=y; }
+function walkToObj(o){ state.tx=o.walkX??clamp(o.x+(o.w>>1),PLAYER_W/2,W-PLAYER_W/2); state.ty=o.walkY??clamp(o.y+o.h-1,PLAYER_H,PLAY_H-1); }
 function canChangeRoom(o){ return !!(o&&o.targetRoom&&(!o.requires||o.requires())); }
 function changeRoomFrom(o){ go(o.targetRoom,o.targetX??160,o.targetY??180); }
 function playerExit(){ const r=rooms[state.room]; for(let i=r.hotspots.length-1;i>=0;i--){ const h=r.hotspots[i]; if(canChangeRoom(h)&&state.px>=h.x&&state.py>=h.y&&state.px<h.x+h.w&&state.py<h.y+h.h) return h; } return null; }
 function interact(o){ if(!o) return; const verb=state.selectedInv?'use':state.verb; if(verb==='walk'){ if(canChangeRoom(o)) changeRoomFrom(o); else if(o.click) o.click.call(o); else cant(verb); return; } if(verb==='use'&&!state.selectedInv&&o.inventoryItem){ if(o.click) o.click.call(o); else if(o.take) o.take.call(o); else cant(verb); if(state.inv.includes(o.inventoryItem)){ state.verb='use'; state.selectedInv=o.inventoryItem; } return; } if(o[verb]) o[verb].call(o); else cant(verb); deselectVerb(); }
-
 function triggerCursorLongClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ const def=inventoryDefs[state.inv[ii]]; say('player',def?.description||`I have ${def?.name||state.inv[ii]}.`); } return; } const o=at(x,y); if(o){ if(o.longclick) o.longclick.call(o); else if(o.look) o.look.call(o); else cant('look'); } }
 function update(){ const dx=state.tx-state.px, dy=state.ty-state.py, d=Math.hypot(dx,dy); if(d>0){ const step=Math.min(SPEED,d); state.px+=dx/d*step; state.py+=dy/d*step; if(dx<0) state.face=0; else if(dx>0) state.face=1; const exit=playerExit(); if(exit){ changeRoomFrom(exit); return; } } if(d<=SPEED && state.pending){ const p=state.pending; state.pending=null; interact(p); } else if(d<=SPEED&&!state.pending){ const exit=playerExit(); if(exit) changeRoomFrom(exit); } }
 function drawBmp(path,x,y,w,h){ const im=img(path); if(im.complete&&im.naturalWidth) ctx.drawImage(im,x,y,w||im.naturalWidth,h||im.naturalHeight); else { rect(x,y,w||24,h||24,hashColor(path,0x2f5f9e)); } }
 function drawPlayer(sx,sy){ const moving=Math.abs(state.px-state.tx)+Math.abs(state.py-state.ty)>0.1; const path=moving?(state.face?'graphics/sprites/player_walk_right.bmp':'graphics/sprites/player_walk_left.bmp'):'graphics/sprites/player_idle.bmp'; const im=img(path); if(im.complete&&im.naturalWidth) ctx.drawImage(im,state.px-im.naturalWidth/2+sx,state.py-im.naturalHeight+sy); else { rect(state.px-11+sx,state.py+7+sy,22,5,'#664f38'); rect(state.px-5+sx,state.py-34+sy,10,10,'#5a3a24'); rect(state.px-6+sx,state.py-25+sy,12,15,'#2f5f9e'); rect(state.px-9+sx,state.py-22+sy,4,12,'#274774'); rect(state.px+5+sx,state.py-22+sy,4,12,'#274774'); rect(state.px-5+sx,state.py-10+sy,4,10,'#1f2430'); rect(state.px+1+sx,state.py-10+sy,4,10,'#1f2430'); } }
 function drawSplash(){ rect(0,0,W,H,'#000'); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='48px monospace'; ctx.fillStyle='#f0f0f0'; ctx.fillText('YAAT',W/2,H/2-18); ctx.font='16px monospace'; ctx.fillStyle='#a0c8ff'; ctx.fillText('Yet Another Adventure Tool',W/2,H/2+30); ctx.textAlign='start'; ctx.textBaseline='top'; }
-function draw(){ tickDialogue(); const now=performance.now(); if(now<state.splashUntil){ drawSplash(); return; } let sx=0,sy=0; if(now<state.shakeUntil){ const m=Math.max(1,Math.round(state.shakeMag*(state.shakeUntil-now)/350)); sx=(Math.random()*m*2-m)|0; sy=(Math.random()*m*2-m)|0; }
- const r=rooms[state.room]; rect(0,0,W,H,hashColor(r.bg,0xd8c7a3)); drawBmp(r.bg,sx,sy,W,PLAY_H);
- for(const h of r.hotspots){ rect(h.x+sx,h.y+sy,h.w,h.h,'rgba(240,208,32,.45)'); rect(h.x+1+sx,h.y+1+sy,Math.max(0,h.w-2),Math.max(0,h.h-2),'rgba(192,128,32,.35)'); }
- for(const o of r.objects){ if(typeof o.visible==='function'&&!o.visible()) continue; drawBmp(o.sprite,o.x+sx,o.y+sy,o.w,o.h); }
- drawPlayer(sx,sy); drawUI(); drawDialogue(); drawCursor(); }
+function draw(){ tickDialogue(); const now=performance.now(); if(now<state.splashUntil){ drawSplash(); return; } let sx=0,sy=0; if(now<state.shakeUntil){ const m=Math.max(1,Math.round(state.shakeMag*(state.shakeUntil-now)/350)); sx=(Math.random()*m*2-m)|0; sy=(Math.random()*m*2-m)|0; } const r=rooms[state.room]; rect(0,0,W,H,hashColor(r.bg,0xd8c7a3)); drawBmp(r.bg,sx,sy,W,PLAY_H); for(const h of r.hotspots){ rect(h.x+sx,h.y+sy,h.w,h.h,'rgba(240,208,32,.45)'); rect(h.x+1+sx,h.y+1+sy,Math.max(0,h.w-2),Math.max(0,h.h-2),'rgba(192,128,32,.35)'); } for(const o of r.objects){ if(typeof o.visible==='function'&&!o.visible()) continue; drawBmp(o.sprite,o.x+sx,o.y+sy,o.w,o.h); } drawPlayer(sx,sy); drawUI(); drawDialogue(); drawCursor(); }
 function drawUI(){ rect(0,PLAY_H,W,40,'#101018'); verbs.forEach((v,i)=>{ const x=4+(i%3)*50,y=PLAY_H+3+(i/3|0)*15; rect(x,y,48,13,v===state.verb?'#6a5430':'#303040'); text(v,x+5,y+3); }); state.inv.forEach((id,i)=>{ const x=164+i*23,y=PLAY_H+4; rect(x,y,20,20,id===state.selectedInv?'#806020':'#404048'); rect(x+1,y+1,18,18,'#202028'); drawBmp(inventoryDefs[id].icon,x+2,y+2,16,16); }); const hover=state.cy<PLAY_H&&at(state.cx,state.cy); const command=state.selectedInv?`Use ${inventoryDefs[state.selectedInv].name} with `:(verbLabels[state.verb]||state.verb)+' '; text(state.actionSentence||command+(hover?hover.name:''),164,PLAY_H+28,'#d8d0b8'); }
 function drawDialogue(){ if(!state.dialog) return; rect(16,10,288,20,'rgba(0,0,0,.75)'); text(state.dialog.msg,24,17,'#fff'); }
 function drawCursor(){ const use=(at(state.cx,state.cy)?.cursor==='use')||state.selectedInv||state.verb==='use'; rect(state.cx,state.cy,2,14,'#000'); rect(state.cx+2,state.cy+2,2,10,'#000'); rect(state.cx+4,state.cy+4,2,8,'#000'); rect(state.cx+6,state.cy+6,2,6,'#000'); rect(state.cx+8,state.cy+8,2,4,'#000'); rect(state.cx+1,state.cy+1,1,11,use?'#ffe070':'#fff'); rect(state.cx+2,state.cy+3,2,7,use?'#ffe070':'#fff'); rect(state.cx+4,state.cy+5,2,5,use?'#ffe070':'#fff'); rect(state.cx+6,state.cy+7,2,3,use?'#ffe070':'#fff'); }
-function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ if(state.verb==='look'&&!state.selectedInv){ interact(o); } else { walkToObj(o); state.pending=state.verb==='walk'&&!state.selectedInv&&o.inventoryItem?null:o; } } else { state.pending=null; if(state.selectedInv||state.verb!=='walk'){ deselectVerb(); return; } state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); } }
-canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; triggerCursorClick(); });
-async function requestFullscreenAndLandscape(){
-  try { if(!document.fullscreenElement && shell.requestFullscreen) await shell.requestFullscreen(); } catch {}
-  try { await screen.orientation?.lock?.('landscape'); } catch {}
-}
-window.addEventListener('pointerdown',e=>{ if(e.button>0) return; requestFullscreenAndLandscape(); touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; clearTouchLongPress(); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId&&!touchState.moved){ touchState.longFired=true; touchState.longTimer=0; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
 function triggerCursorClick(){ if(performance.now()<state.splashUntil){ state.splashUntil=0; return; } if(state.dialog||state.sayQueue.length){ advanceSay(); return; } const x=state.cx,y=state.cy; if(y>=PLAY_H){ const vi=verbs.findIndex((_,i)=> x>=4+(i%3)*50&&x<52+(i%3)*50&&y>=PLAY_H+3+(i/3|0)*15&&y<PLAY_H+16+(i/3|0)*15); if(vi>=0){ state.verb=verbs[vi]; state.selectedInv=''; return; } const ii=state.inv.findIndex((_,i)=>x>=164+i*23&&x<184+i*23&&y>=PLAY_H+4&&y<PLAY_H+24); if(ii>=0){ state.selectedInv=state.inv[ii]; state.verb='use'; return; } return; } const o=at(x,y); if(o){ const command=state.selectedInv?`Use ${inventoryDefs[state.selectedInv].name} with `:(verbLabels[state.verb]||state.verb)+' '; state.actionSentence=command+o.name; if(state.verb==='look'&&!state.selectedInv){ interact(o); } else { walkToObj(o); state.pending=state.verb==='walk'&&!state.selectedInv&&o.inventoryItem?null:o; } } else { state.pending=null; if(state.selectedInv||state.verb!=='walk'){ deselectVerb(); return; } state.tx=clamp(x,PLAYER_W/2,W-PLAYER_W/2); state.ty=clamp(y,PLAYER_H,PLAY_H-1); } }
-canvas.addEventListener('mousemove',e=>{ if(!touchCursorToggle.checked) setCursorFromClient(e); });
-canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; if(!touchCursorToggle.checked) setCursorFromClient(e); triggerCursorClick(); });
-window.addEventListener('pointerdown',e=>{ if(!touchCursorToggle.checked || e.button>0) return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; clearTouchLongPress(); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId&&!touchState.moved){ touchState.longFired=true; touchState.longTimer=0; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); e.preventDefault(); },{passive:false});
-window.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD){ touchState.moved=true; clearTouchLongPress(); } moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
-window.addEventListener('pointerup',e=>{ if(!endTouchCursor(e)) return; e.preventDefault(); },{passive:false});
-window.addEventListener('pointercancel',e=>{ if(endTouchCursor(e,false)) e.preventDefault(); },{passive:false});
-if('serviceWorker' in navigator){
-  let refreshing=false;
-  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    if(refreshing) return;
-    refreshing=true;
-    window.location.reload();
-  });
-  window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('sw.js').then(reg=>{
-      reg.update();
-      if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
-      reg.addEventListener('updatefound',()=>{
-        const worker=reg.installing;
-        worker?.addEventListener('statechange',()=>{
-          if(worker.state==='installed' && navigator.serviceWorker.controller){
-            worker.postMessage({type:'SKIP_WAITING'});
-          }
-        });
-      });
-    }).catch(()=>{});
-  });
-}
+canvas.addEventListener('mousemove',e=>setCursorFromClient(e));
+canvas.addEventListener('click',e=>{ if(performance.now()<touchState.suppressClickUntil) return; setCursorFromClient(e); triggerCursorClick(); });
+canvas.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse'||e.button>0) return; touchState.active=true; touchState.id=e.pointerId; touchState.lastX=e.clientX; touchState.lastY=e.clientY; touchState.totalMove=0; touchState.moved=false; touchState.longFired=false; clearTouchLongPress(); touchState.longTimer=setTimeout(()=>{ if(touchState.active&&touchState.id===e.pointerId&&!touchState.moved){ touchState.longFired=true; touchState.longTimer=0; triggerCursorLongClick(); } },TOUCH_LONGPRESS_MS); canvas.setPointerCapture?.(e.pointerId); e.preventDefault(); },{passive:false});
+canvas.addEventListener('pointermove',e=>{ if(!touchState.active || e.pointerId!==touchState.id) return; const dx=e.clientX-touchState.lastX, dy=e.clientY-touchState.lastY; touchState.totalMove+=Math.hypot(dx,dy); if(touchState.totalMove>TOUCH_DRAG_THRESHOLD){ touchState.moved=true; clearTouchLongPress(); } moveCursorByClientDelta(dx,dy); touchState.lastX=e.clientX; touchState.lastY=e.clientY; e.preventDefault(); },{passive:false});
+canvas.addEventListener('pointerup',e=>{ if(!endTouchCursor(e)) return; e.preventDefault(); },{passive:false});
+canvas.addEventListener('pointercancel',e=>{ if(endTouchCursor(e,false)) e.preventDefault(); },{passive:false});
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('./sw.js').then(reg=>reg.update()).catch(()=>{}); }); }
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 go('room000_start',160,100); loop();
 })();
