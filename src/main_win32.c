@@ -161,6 +161,11 @@ static char *yaat_trim_text(char *text);
 static int yaat_load_bmp(YaatBitmap *bitmap, const char *path);
 static int yaat_player_motion_complete(void);
 static void yaat_unload_bitmap(YaatBitmap *bitmap);
+
+static void yaat_longclick_game(int x, int y);
+static int yaat_runtime_longclick_game(int x, int y);
+static void yaat_execute_entity_verb(YaatEntity *entity, const char *verb,
+                                     const char *item, const char *default_verb);
 static void yaat_click_game(int x, int y, int immediate_room_change);
 static void yaat_draw_splash_screen(void);
 static void yaat_pending_room_change_maybe_complete(void);
@@ -2792,12 +2797,35 @@ static int yaat_runtime_room_script_index(void)
     return g_current_room;
 }
 
+static void yaat_execute_entity_verb(YaatEntity *entity, const char *verb,
+                                     const char *item, const char *default_verb)
+{
+    YaatEvent *event;
+    const char *fallback;
+
+    if (entity == 0 || verb == 0 || verb[0] == '\0') return;
+    event = 0;
+    if (item != 0 && item[0] != '\0') {
+        event = yaat_find_event(entity->events, entity->event_count, verb, item);
+    }
+    if (event == 0) event = yaat_find_event(entity->events, entity->event_count, verb, 0);
+    fallback = (default_verb != 0 && default_verb[0] != '\0') ? default_verb : verb;
+    if (event == 0 && strcmp(fallback, verb) != 0) {
+        event = yaat_find_event(entity->events, entity->event_count, fallback, 0);
+    }
+    if (event != 0) {
+        yaat_execute_event(event);
+    } else {
+        yaat_default_action_sentence(fallback);
+        yaat_deselect_action();
+    }
+}
+
 static void yaat_runtime_execute_entity_event(const char *entity_id, const char *script_event)
 {
     char event_name[32];
     YaatRoom *room;
     YaatEntity *entity;
-    YaatEvent *event;
 
     if (g_room_count <= 0) return;
     room = &g_rooms[yaat_runtime_room_script_index()];
@@ -2807,16 +2835,21 @@ static void yaat_runtime_execute_entity_event(const char *entity_id, const char 
     (void)script_event;
     yaat_copy(event_name, sizeof(event_name), yaat_active_verb(), strlen(yaat_active_verb()));
     if (strcmp(event_name, "use") == 0 && g_selected_inventory[0] != '\0') {
-        event = yaat_find_event(entity->events, entity->event_count, event_name, g_selected_inventory);
+        yaat_execute_entity_verb(entity, event_name, g_selected_inventory, 0);
     } else {
-        event = yaat_find_event(entity->events, entity->event_count, event_name, 0);
+        yaat_execute_entity_verb(entity, event_name, 0, 0);
     }
-    if (event != 0) {
-        yaat_execute_event(event);
-    } else {
-        yaat_default_action_sentence(event_name);
-        yaat_deselect_action();
-    }
+}
+
+static void yaat_runtime_execute_entity_longclick(const char *entity_id)
+{
+    YaatRoom *room;
+    YaatEntity *entity;
+
+    if (g_room_count <= 0) return;
+    room = &g_rooms[yaat_runtime_room_script_index()];
+    entity = yaat_entity_by_id(room, entity_id);
+    yaat_execute_entity_verb(entity, "longclick", 0, "look");
 }
 
 static int yaat_runtime_ini_hit(const char *path, int x, int y, char *id,
@@ -2975,6 +3008,46 @@ static void yaat_pending_interaction_maybe_complete(void)
     yaat_click_game(click_x, click_y, 0);
 }
 
+
+static int yaat_runtime_longclick_game(int x, int y)
+{
+    int i;
+    char id[YAAT_ASSET_MAX_NAME];
+    char event_name[32];
+    char path[YAAT_ASSET_MAX_PATH];
+    YaatRuntimeRoom *room = &g_runtime_load.room;
+
+    for (i = room->object_count - 1; i >= 0; --i) {
+        YaatRuntimeObject *object = &room->objects[i];
+        if (object->visible && x >= object->x && y >= object->y &&
+            x < object->x + object->width && y < object->y + object->height) {
+            yaat_pending_interaction_clear();
+            yaat_pending_room_change_clear();
+            yaat_runtime_join_path(path, sizeof(path),
+                                   yaat_runtime_logical_path(room->room_path),
+                                   "objects.ini");
+            if (!yaat_runtime_ini_hit(path, x, y, id, sizeof(id), event_name, sizeof(event_name))) {
+                yaat_copy(id, sizeof(id), object->id, strlen(object->id));
+            }
+            yaat_runtime_execute_entity_longclick(id);
+            return 1;
+        }
+    }
+
+    for (i = room->hotspot_count - 1; i >= 0; --i) {
+        YaatRuntimeHotspot *hotspot = &room->hotspots[i];
+        if (hotspot->width > 0 && hotspot->height > 0 && x >= hotspot->x &&
+            y >= hotspot->y && x < hotspot->x + hotspot->width &&
+            y < hotspot->y + hotspot->height) {
+            yaat_pending_interaction_clear();
+            yaat_pending_room_change_clear();
+            yaat_runtime_execute_entity_longclick(hotspot->id);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
 {
     int i;
@@ -3092,6 +3165,47 @@ static void yaat_click_inventory_item(const char *item)
     } else {
         yaat_default_inventory_action_sentence(verb);
         yaat_deselect_action();
+    }
+}
+
+static void yaat_longclick_inventory_item(const char *item)
+{
+    YaatEntity *entity;
+    YaatRuntimeInventoryItem *runtime_item;
+
+    if (item == 0 || item[0] == '\0') return;
+    yaat_pending_interaction_clear();
+    yaat_pending_room_change_clear();
+    entity = yaat_entity_by_id_any_room(item);
+    if (entity != 0) {
+        yaat_execute_entity_verb(entity, "longclick", 0, "look");
+    } else if ((runtime_item = yaat_find_runtime_inventory_item(item)) != 0 &&
+               runtime_item->description[0] != '\0') {
+        yaat_player_say(runtime_item->description);
+        yaat_deselect_action();
+    } else {
+        yaat_default_inventory_action_sentence("look");
+        yaat_deselect_action();
+    }
+}
+
+static void yaat_longclick_game(int x, int y)
+{
+    int i;
+    YaatRoom *room;
+    if (g_runtime_load.ok) {
+        yaat_runtime_longclick_game(x, y);
+        return;
+    }
+    room = &g_rooms[g_current_room];
+    for (i = room->entity_count - 1; i >= 0; --i) {
+        YaatEntity *e = &room->entities[i];
+        if (e->visible && x >= e->x && y >= e->y && x < e->x + e->w && y < e->y + e->h) {
+            yaat_pending_interaction_clear();
+            yaat_pending_room_change_clear();
+            yaat_execute_entity_verb(e, "longclick", 0, "look");
+            return;
+        }
     }
 }
 
@@ -3577,6 +3691,34 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         else break;
         InvalidateRect(window, 0, FALSE);
         return 0;
+    case WM_RBUTTONDOWN:
+        if (g_splash_remaining_ms > 0) {
+            g_splash_remaining_ms = 0;
+            InvalidateRect(window, 0, FALSE);
+            return 0;
+        }
+        if (g_save_menu_mode != YAAT_SAVE_MENU_CLOSED) return 0;
+        if (g_dialogue_visible) g_dialogue_visible = 0;
+        if (g_dialogue_choice_visible && yaat_handle_dialogue_click(window, (int)(short)LOWORD(l_param), (int)(short)HIWORD(l_param))) { }
+        else if (g_dialogue_visible) { g_dialogue_visible = 0; yaat_dialogue_hide_choices(); }
+        else {
+            int backbuffer_x;
+            int backbuffer_y;
+            if (yaat_client_to_backbuffer(window, (int)(short)LOWORD(l_param),
+                                          (int)(short)HIWORD(l_param),
+                                          &backbuffer_x, &backbuffer_y)) {
+                int inventory_index;
+                g_cursor_x = backbuffer_x;
+                g_cursor_y = backbuffer_y;
+                inventory_index = yaat_inventory_slot_at(backbuffer_x, backbuffer_y);
+                if (inventory_index >= 0) {
+                    yaat_longclick_inventory_item(g_inventory[inventory_index]);
+                } else {
+                    yaat_longclick_game(backbuffer_x, backbuffer_y);
+                }
+            }
+        }
+        InvalidateRect(window, 0, FALSE); return 0;
     case WM_LBUTTONDOWN:
         if (g_splash_remaining_ms > 0) {
             g_splash_remaining_ms = 0;
