@@ -1,0 +1,13 @@
+{
+  "name": "YAAT HTML5",
+  "short_name": "YAAT",
+  "description": "Yet Another Adventure Tool HTML5 demo.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "categories": ["games"],
+  "icons": []
+}
