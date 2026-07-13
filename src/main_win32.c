@@ -3557,6 +3557,11 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
         }
     }
 
+    /* A click that falls through to here targeted the room background, not the
+       previously hovered object/hotspot/inventory item. Clear the hover target so
+       the command feedback updates from e.g. "Walk to brass key" to "Walk"
+       before starting the background walk or deselecting the active verb. */
+    yaat_set_hover_target(YAAT_HOVER_EMPTY, "", "");
     yaat_pending_interaction_clear();
     yaat_pending_room_change_clear();
     if (g_selected_verb[0] != '\0') {
