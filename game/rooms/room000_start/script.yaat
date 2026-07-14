@@ -16,7 +16,7 @@ room room000_start {
       say player "This begins the demo."  # @rooms.room000_start.2
     }
 
-    on click {
+    on use {
       play_sound "audio/sfx/start_click.wav"
       goto room001_intro
     }
