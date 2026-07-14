@@ -1041,10 +1041,6 @@ static void yaat_draw_runtime_room(void)
     }
 
     yaat_draw_runtime_zmask();
-    if (g_player_visible && g_dialogue_visible && strcmp(g_dialogue_speaker, "player") == 0) {
-        dialogue_x = yaat_clamp_int(g_player_x - 60, 0, YAAT_BACKBUFFER_WIDTH - 120);
-        dialogue_y = yaat_clamp_int(g_player_y - YAAT_PLAYER_HEIGHT - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
-    if (g_player_visible) yaat_draw_player();
     if (yaat_dialogue_position_for_speaker(&dialogue_x, &dialogue_y)) {
         yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
     }
@@ -3017,6 +3013,7 @@ static void yaat_room_change_region_maybe_enter(void)
     YaatRuntimeHotspot *hotspot;
 
     if (g_pending_room_change || g_pending_interaction || !g_runtime_load.ok) return;
+    if (!yaat_player_motion_complete()) return;
     hotspot = yaat_runtime_hotspot_at(g_player_x, g_player_y);
     if (!yaat_runtime_hotspot_change_room_enabled(hotspot)) return;
     yaat_runtime_change_room(hotspot);

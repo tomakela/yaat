@@ -44,7 +44,7 @@ export class ScriptVm {
     case K.SET_OBJECT_SPRITE: s.object(c.a).sprite=c.b; effects.push({type:'setObjectSprite', object:c.a, sprite:c.b}); break;
     case K.TITLE_CARD: effects.push({type:'titleCard', title:c.a, subtitle:c.b}); break;
     case K.WAIT: effects.push({type:'wait', duration:c.intValue || c.value.int}); break;
-    case K.MOVE_PLAYER: s.player.x=c.boolValue; s.player.y=c.intValue; effects.push({type:'movePlayer', x:s.player.x, y:s.player.y}); break;
+    case K.MOVE_PLAYER: s.player.x=c.boolValue; s.player.y=c.intValue; s.setPlayerTarget(s.player.x, s.player.y); effects.push({type:'movePlayer', x:s.player.x, y:s.player.y}); break;
     case K.SET_PLAYER_VISIBLE: s.player.visible=!!c.boolValue; effects.push({type:'setPlayerVisible', visible:s.player.visible}); break;
     case K.DIALOG: effects.push({type:'dialog', id:c.a, text:c.b, stringId:c.stringId}); break;
     case K.CHOICE: effects.push({type:'choice', prompt:c.a, option:c.b, firstChild:c.firstChild, childCount:c.childCount}); break;

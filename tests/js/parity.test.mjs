@@ -181,3 +181,39 @@ test('JavaScript VM covers demo refresh visibility, sprite, drop, and consume co
   assert.equal(state.object('demo_badge_lit').visible, true);
   assert.equal(state.object('brass_key').visible, true);
 });
+
+test('JavaScript state hides player-owned UI with hide_player', () => {
+  const pkg = {
+    vars: [],
+    rooms: [{ id: 'menu', label: 'Menu', color: 0, events: [{ name: 'enter', item: '', firstCommand: 0, commandCount: 1 }], entities: [] }],
+    commands: [
+      { kind: COMMAND_KIND.SET_PLAYER_VISIBLE, a: '', b: '', stringId: '', boolValue: 0, intValue: 0, value: { kind: VALUE_KIND.BOOL, bool: false, int: 0, string: '' }, conditionOp: 0, firstChild: 0, childCount: 0, firstElseChild: 0, elseChildCount: 0 },
+    ],
+    globalEvents: [],
+  };
+  const state = new GameState(pkg);
+  const effects = new ScriptVm(pkg, state).runEvent(pkg.rooms[0].events[0]);
+
+  assert.deepEqual(effects, [{ type: 'setPlayerVisible', visible: false }]);
+  assert.equal(state.playerLayerVisible(), false);
+  assert.equal(state.verbUiVisible(), false);
+});
+
+test('JavaScript room-change regions wait for player motion to complete', () => {
+  const pkg = {
+    vars: [{ name: 'door_locked', value: { kind: VALUE_KIND.BOOL, bool: false, int: 0, string: '' } }],
+    rooms: [{ id: 'room001_intro', label: 'Intro', color: 0, events: [], entities: [] }],
+    commands: [],
+    globalEvents: [],
+  };
+  const state = new GameState(pkg, { currentRoom: 'room001_intro', playerX: 286, playerY: 159 });
+  const exit = { action: 'change_room', targetRoom: 'room002_exit', requiredFlag: 'door_locked', requiredFlagValue: false };
+
+  state.setPlayerTarget(120, 159);
+  assert.equal(state.tryEnterRoomChangeRegion(exit), false);
+  assert.equal(state.currentRoom, 'room001_intro');
+
+  state.player.x = 120;
+  assert.equal(state.tryEnterRoomChangeRegion(exit), true);
+  assert.equal(state.currentRoom, 'room002_exit');
+});
