@@ -182,6 +182,16 @@ test('JavaScript VM covers demo refresh visibility, sprite, drop, and consume co
   assert.equal(state.object('brass_key').visible, true);
 });
 
+
+test('browser demo start room keeps player and verb UI hidden', async () => {
+  const html = await readFile('index.html', 'utf8');
+  const startRoomDefs = html.match(/room000_start:\{/g) ?? [];
+
+  assert.equal(startRoomDefs.length, 1);
+  assert.match(html, /room000_start:\{[^}]*hidePlayer:true,hideUI:true/);
+  assert.match(html, /if\(rooms\[state\.room\]\.hideUI\) return;/);
+});
+
 test('JavaScript state hides player-owned UI with hide_player', () => {
   const pkg = {
     vars: [],
