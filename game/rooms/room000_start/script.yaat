@@ -4,20 +4,23 @@ room room000_start {
   background "rooms/room000_start/background.bmp"
 
   on enter {
+    hide_player
     say narrator "Welcome to the YAAT placeholder asset demo."  # @rooms.room000_start.1
   }
 
-  hotspot start_button {
-    name "Start Game"
+  object new_game {
+    name "New Game"
+    sprite "rooms/room000_start/start_button_0.bmp"
     at 112, 128
     size 96, 24
 
     on look {
-      say player "This begins the demo."  # @rooms.room000_start.2
+      say player "This begins a new adventure."  # @rooms.room000_start.2
     }
 
-    on use {
+    on click nowalk {
       play_sound "audio/sfx/start_click.wav"
+      show_player
       goto room001_intro
     }
   }
