@@ -312,6 +312,23 @@ on <event> {
 }
 ```
 
+Room object and hotspot handlers may optionally choose whether the player walks
+to the target before the handler runs:
+
+```text
+on <event> walk {
+  ...
+}
+
+on <event> nowalk {
+  ...
+}
+```
+
+`walk` is the default for room object and hotspot verb handlers. Use `nowalk`
+(`no_walk` or `immediate` are accepted aliases) for handlers that should fire
+in place, such as reading a far-away sign or saying a quick rejection line.
+
 Supported version 0 events:
 
 ```text
@@ -367,10 +384,10 @@ Runtime dispatch uses this order:
 2. If the click is on an inventory item while `use` is selected and no inventory item is selected yet, the runtime stores that inventory item as the selected item.
 3. If the click is on a different inventory item while `use` already has a selected inventory item, the runtime looks for `on use <selected-item>` on the clicked target inventory item.
 4. If the clicked inventory item does not define that exact combination handler, it becomes the newly selected inventory item instead.
-5. If the click is on a room object or hotspot, the runtime first looks for `on <selected-verb>`. A right-click is treated as `on longclick`, falling back to `on look` by default.
+5. If the click is on a room object or hotspot, the runtime first looks for `on <selected-verb>`. Missing verb handlers immediately use the default "I can't..." feedback instead of walking to the target. A right-click is treated as `on longclick`, falling back to `on look` by default.
 6. If `use` has a selected inventory item, the runtime first looks for `on use <item>` before trying plain `on use`.
-7. If the selected verb handler is missing, the runtime falls back to `on click`.
-8. If no matching event exists, no commands run.
+7. If the selected verb handler exists and is marked `walk` or has no walk modifier, the player walks to the target and then dispatches it.
+8. If the selected verb handler exists and is marked `nowalk`, the runtime dispatches it immediately without changing the walk target.
 
 ### Inventory item scripts and combinations
 

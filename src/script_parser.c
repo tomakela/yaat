@@ -100,11 +100,33 @@ static void yaat_parse_event(YaatScriptPackage *package, YaatScriptCursor *curso
     if (*event_count >= YAAT_MAX_EVENTS) return;
     event = &events[(*event_count)++];
     memset(event, 0, sizeof(*event));
+    event->walk_before = 1;
     token = yaat_advance_token(cursor);
     parser_copy(event->name, sizeof(event->name), token->lexeme, token->length);
     if (yaat_peek(cursor)->type == SCRIPT_TOKEN_IDENTIFIER && !yaat_token_is(yaat_peek(cursor), "on")) {
-        token = yaat_advance_token(cursor);
-        parser_copy(event->item, sizeof(event->item), token->lexeme, token->length);
+        if (yaat_token_is(yaat_peek(cursor), "nowalk") ||
+            yaat_token_is(yaat_peek(cursor), "no_walk") ||
+            yaat_token_is(yaat_peek(cursor), "immediate")) {
+            event->walk_before = 0;
+            yaat_advance_token(cursor);
+        } else if (yaat_token_is(yaat_peek(cursor), "walk")) {
+            event->walk_before = 1;
+            yaat_advance_token(cursor);
+        } else {
+            token = yaat_advance_token(cursor);
+            parser_copy(event->item, sizeof(event->item), token->lexeme, token->length);
+        }
+    }
+    if (yaat_peek(cursor)->type == SCRIPT_TOKEN_IDENTIFIER) {
+        if (yaat_token_is(yaat_peek(cursor), "nowalk") ||
+            yaat_token_is(yaat_peek(cursor), "no_walk") ||
+            yaat_token_is(yaat_peek(cursor), "immediate")) {
+            event->walk_before = 0;
+            yaat_advance_token(cursor);
+        } else if (yaat_token_is(yaat_peek(cursor), "walk")) {
+            event->walk_before = 1;
+            yaat_advance_token(cursor);
+        }
     }
     if (yaat_match_token(cursor, SCRIPT_TOKEN_LEFT_BRACE)) {
         event->first_command = package->command_count;

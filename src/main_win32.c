@@ -3149,6 +3149,43 @@ static YaatEvent *yaat_find_exact_event(YaatEvent *events, int count, const char
     return 0;
 }
 
+static YaatEvent *yaat_find_active_entity_event(YaatEntity *entity)
+{
+    YaatEvent *event;
+    const char *verb;
+
+    if (entity == 0) return 0;
+    verb = yaat_active_verb();
+    event = 0;
+    if (strcmp(verb, "use") == 0 && g_selected_inventory[0] != '\0') {
+        event = yaat_find_event(entity->events, entity->event_count, verb,
+                                g_selected_inventory);
+    }
+    if (event == 0) {
+        event = yaat_find_event(entity->events, entity->event_count, verb, 0);
+    }
+    return event;
+}
+
+static int yaat_should_walk_before_entity_event(YaatEntity *entity)
+{
+    YaatEvent *event;
+
+    event = yaat_find_active_entity_event(entity);
+    if (event == 0) {
+        yaat_default_action_sentence(yaat_active_verb());
+        yaat_deselect_action();
+        return 0;
+    }
+    if (!event->walk_before) {
+        yaat_execute_entity_verb(entity, yaat_active_verb(),
+                                 strcmp(yaat_active_verb(), "use") == 0 ?
+                                 g_selected_inventory : 0, 0);
+        return 0;
+    }
+    return 1;
+}
+
 static void yaat_click_inventory_item(const char *item)
 {
     YaatEntity *entity;
@@ -3501,14 +3538,21 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
         }
     }
 
-    if (strcmp(g_selected_verb, "use") == 0) {
+    if (g_selected_verb[0] != '\0' && strcmp(g_selected_verb, "use") != 0) {
         if (g_runtime_load.ok) {
+            int script_room_index = yaat_runtime_room_script_index();
+            YaatRoom *script_room = (script_room_index >= 0 &&
+                                     script_room_index < g_room_count) ?
+                                    &g_rooms[script_room_index] : 0;
             for (i = g_runtime_load.room.object_count - 1; i >= 0; --i) {
                 YaatRuntimeObject *object = &g_runtime_load.room.objects[i];
                 if (object->visible && backbuffer_x >= object->x &&
                     backbuffer_y >= object->y &&
                     backbuffer_x < object->x + object->width &&
                     backbuffer_y < object->y + object->height) {
+                    YaatEntity *entity = script_room != 0 ?
+                                         yaat_entity_by_id(script_room, object->id) : 0;
+                    if (!yaat_should_walk_before_entity_event(entity)) return;
                     walk_target_x = backbuffer_x;
                     walk_target_y = yaat_clamp_int(backbuffer_y,
                                                    YAAT_PLAYER_HEIGHT,
@@ -3527,6 +3571,9 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
                 }
             }
             if (hotspot != 0) {
+                YaatEntity *entity = script_room != 0 ?
+                                     yaat_entity_by_id(script_room, hotspot->id) : 0;
+                if (!yaat_should_walk_before_entity_event(entity)) return;
                 walk_target_x = backbuffer_x;
                 walk_target_y = yaat_clamp_int(backbuffer_y,
                                                YAAT_PLAYER_HEIGHT,
@@ -3548,6 +3595,86 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
                     backbuffer_y >= entity->y &&
                     backbuffer_x < entity->x + entity->w &&
                     backbuffer_y < entity->y + entity->h) {
+                    if (!yaat_should_walk_before_entity_event(entity)) return;
+                    walk_target_x = backbuffer_x;
+                    walk_target_y = yaat_clamp_int(backbuffer_y,
+                                                   YAAT_PLAYER_HEIGHT,
+                                                   YAAT_PLAYFIELD_HEIGHT - 1);
+                    if (yaat_find_walk_target_for_rect(entity->x, entity->y,
+                                                       entity->w, entity->h,
+                                                       &walk_target_x,
+                                                       &walk_target_y)) {
+                        yaat_pending_interaction_set(backbuffer_x,
+                                                     backbuffer_y);
+                        yaat_pending_room_change_clear();
+                        yaat_set_player_target(walk_target_x, walk_target_y);
+                        yaat_pending_interaction_maybe_complete();
+                        return;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    if (strcmp(g_selected_verb, "use") == 0) {
+        if (g_runtime_load.ok) {
+            int script_room_index = yaat_runtime_room_script_index();
+            YaatRoom *script_room = (script_room_index >= 0 &&
+                                     script_room_index < g_room_count) ?
+                                    &g_rooms[script_room_index] : 0;
+            for (i = g_runtime_load.room.object_count - 1; i >= 0; --i) {
+                YaatRuntimeObject *object = &g_runtime_load.room.objects[i];
+                if (object->visible && backbuffer_x >= object->x &&
+                    backbuffer_y >= object->y &&
+                    backbuffer_x < object->x + object->width &&
+                    backbuffer_y < object->y + object->height) {
+                    YaatEntity *entity = script_room != 0 ?
+                                         yaat_entity_by_id(script_room, object->id) : 0;
+                    if (!yaat_should_walk_before_entity_event(entity)) return;
+                    walk_target_x = backbuffer_x;
+                    walk_target_y = yaat_clamp_int(backbuffer_y,
+                                                   YAAT_PLAYER_HEIGHT,
+                                                   YAAT_PLAYFIELD_HEIGHT - 1);
+                    if (yaat_find_walk_target_for_object(object,
+                                                         &walk_target_x,
+                                                         &walk_target_y)) {
+                        yaat_pending_interaction_set(backbuffer_x,
+                                                     backbuffer_y);
+                        yaat_pending_room_change_clear();
+                        yaat_set_player_target(walk_target_x, walk_target_y);
+                        yaat_pending_interaction_maybe_complete();
+                        return;
+                    }
+                    break;
+                }
+            }
+            if (hotspot != 0) {
+                YaatEntity *entity = script_room != 0 ?
+                                     yaat_entity_by_id(script_room, hotspot->id) : 0;
+                if (!yaat_should_walk_before_entity_event(entity)) return;
+                walk_target_x = backbuffer_x;
+                walk_target_y = yaat_clamp_int(backbuffer_y,
+                                               YAAT_PLAYER_HEIGHT,
+                                               YAAT_PLAYFIELD_HEIGHT - 1);
+                if (yaat_find_walk_target_for_hotspot(hotspot, &walk_target_x,
+                                                      &walk_target_y)) {
+                    yaat_pending_interaction_set(backbuffer_x, backbuffer_y);
+                    yaat_pending_room_change_clear();
+                    yaat_set_player_target(walk_target_x, walk_target_y);
+                    yaat_pending_interaction_maybe_complete();
+                    return;
+                }
+            }
+        } else if (g_current_room >= 0 && g_current_room < g_room_count) {
+            YaatRoom *room = &g_rooms[g_current_room];
+            for (i = room->entity_count - 1; i >= 0; --i) {
+                YaatEntity *entity = &room->entities[i];
+                if (entity->visible && backbuffer_x >= entity->x &&
+                    backbuffer_y >= entity->y &&
+                    backbuffer_x < entity->x + entity->w &&
+                    backbuffer_y < entity->y + entity->h) {
+                    if (!yaat_should_walk_before_entity_event(entity)) return;
                     walk_target_x = backbuffer_x;
                     walk_target_y = yaat_clamp_int(backbuffer_y,
                                                    YAAT_PLAYER_HEIGHT,

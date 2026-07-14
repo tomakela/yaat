@@ -39,7 +39,7 @@ typedef enum YaatCommandKind {
     YAAT_CMD_COUNT
 } YaatCommandKind;
 
-typedef struct YaatEvent { char name[32]; char item[32]; int first_command; int command_count; } YaatEvent;
+typedef struct YaatEvent { char name[32]; char item[32]; int first_command; int command_count; int walk_before; } YaatEvent;
 typedef struct YaatEntity { YaatEntityKind kind; char id[32]; char name[64]; int x; int y; int w; int h; int visible; YaatEvent events[YAAT_MAX_EVENTS]; int event_count; } YaatEntity;
 typedef struct YaatRoom { char id[32]; char label[64]; unsigned long color; YaatEntity entities[YAAT_MAX_ENTITIES]; int entity_count; YaatEvent events[YAAT_MAX_EVENTS]; int event_count; } YaatRoom;
 typedef enum YaatValueKind { YAAT_VALUE_BOOL, YAAT_VALUE_INT, YAAT_VALUE_STRING } YaatValueKind;

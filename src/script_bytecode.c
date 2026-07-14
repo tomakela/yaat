@@ -49,6 +49,7 @@ static void we(FILE *f, const YaatEvent *e)
     ws(f, e->item, 32);
     w16(f, (unsigned)e->first_command);
     w16(f, (unsigned)e->command_count);
+    w16(f, (unsigned)e->walk_before);
 }
 
 static int re(FILE *f, YaatEvent *e)
@@ -58,6 +59,8 @@ static int re(FILE *f, YaatEvent *e)
     e->first_command = (int)v;
     if (!r16(f, &v)) return 0;
     e->command_count = (int)v;
+    if (!r16(f, &v)) return 0;
+    e->walk_before = (int)v;
     return 1;
 }
 

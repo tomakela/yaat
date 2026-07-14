@@ -12,7 +12,7 @@ export const COMMAND_KIND = Object.freeze({
 });
 export const CONDITION_OP = Object.freeze({ TRUTHY: 0, EQ: 1, NE: 2, LT: 3, LTE: 4, GT: 5, GTE: 6 });
 const MAGIC = [0x59,0x41,0x41,0x54,0x42,0x43,0,0];
-const VERSION = 5;
+const VERSION = 6;
 class Reader {
   constructor(bytes){ this.bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes); this.offset = 0; }
   need(n){ if(this.offset + n > this.bytes.length) throw new Error(`Unexpected end of .yaatbc at ${this.offset}`); }
@@ -21,7 +21,7 @@ class Reader {
   str(n){ this.need(n); const start=this.offset; this.offset+=n; let end=start; const max=start+n; while(end<max && this.bytes[end]!==0) end++; return new TextDecoder('windows-1252').decode(this.bytes.subarray(start,end)); }
 }
 function value(r){ const kind=r.u16(); if(kind > VALUE_KIND.STRING) throw new Error(`Invalid value kind ${kind}`); return { kind, bool: r.u16() ? true : false, int: r.u32() | 0, string: r.str(96) }; }
-function event(r){ return { name:r.str(32), item:r.str(32), firstCommand:r.u16(), commandCount:r.u16() }; }
+function event(r){ return { name:r.str(32), item:r.str(32), firstCommand:r.u16(), commandCount:r.u16(), walkBefore:!!r.u16() }; }
 function command(r){ const kind=r.u16(); if(kind > COMMAND_KIND.ANIMATE_OBJECT) throw new Error(`Invalid command kind ${kind}`); return { kind, a:r.str(96), b:r.str(96), stringId:r.str(64), boolValue:r.u16(), intValue:r.u16(), value:value(r), conditionOp:r.u16(), firstChild:r.u16(), childCount:r.u16(), firstElseChild:r.u16(), elseChildCount:r.u16() }; }
 function entity(r){ const kind=r.u16(); const e={ kind, id:r.str(32), name:r.str(64), x:r.u16(), y:r.u16(), w:r.u16(), h:r.u16(), visible:!!r.u16(), events:[] }; const n=r.u16(); for(let i=0;i<n;i++) e.events.push(event(r)); return e; }
 function room(r){ const out={ id:r.str(32), label:r.str(64), color:r.u32(), events:[], entities:[] }; const ec=r.u16(), nc=r.u16(); for(let i=0;i<ec;i++) out.events.push(event(r)); for(let i=0;i<nc;i++) out.entities.push(entity(r)); return out; }
