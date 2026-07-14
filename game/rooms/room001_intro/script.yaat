@@ -26,7 +26,7 @@ room room001_intro {
       say player "A small brass key is lying on the floor."  # @rooms.room001_intro.3
     }
 
-    on click {
+    on take {
       pickup brass_key brass_key
       set took_key = true
       play_sound "audio/sfx/pickup_key.wav"
@@ -73,14 +73,6 @@ room room001_intro {
         say player "The brass key turns, and the door unlocks."  # @rooms.room001_intro.9
       } else {
         say player "The door is already unlocked."  # @rooms.room001_intro.10
-      }
-    }
-
-    on click {
-      if door_locked {
-        say player "Locked. I should use something on it."  # @rooms.room001_intro.11
-      } else {
-        goto room002_exit
       }
     }
   }

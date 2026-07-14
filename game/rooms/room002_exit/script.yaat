@@ -18,10 +18,6 @@ room room002_exit {
     on look {
       say player "That door leads back to the intro room."  # @rooms.room002_exit.2
     }
-
-    on click {
-      goto room001_intro
-    }
   }
 
   hotspot ending_plaque {
@@ -30,10 +26,10 @@ room room002_exit {
     size 96, 48
 
     on look {
-      say narrator "The plaque waits for a final click."  # @rooms.room002_exit.3
+      say narrator "The plaque waits for someone to use it."  # @rooms.room002_exit.3
     }
 
-    on click {
+    on use {
       if demo_complete {
         say narrator "The demo is already complete."  # @rooms.room002_exit.4
       } else {
