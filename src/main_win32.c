@@ -2601,7 +2601,7 @@ static void yaat_render_scene(void)
     } else {
         yaat_draw_error_scene();
     }
-    yaat_draw_verb_ui();
+    if (g_player_visible) yaat_draw_verb_ui();
     if (g_dialogue_visible) {
         yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_speaker, 0x00ffd060UL);
         yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_text, 0x00f0f0f0UL);
@@ -3445,7 +3445,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
                                    &backbuffer_x, &backbuffer_y)) return;
     g_cursor_x = backbuffer_x;
     g_cursor_y = backbuffer_y;
-    verb_index = yaat_verb_button_at(backbuffer_x, backbuffer_y);
+    verb_index = g_player_visible ? yaat_verb_button_at(backbuffer_x, backbuffer_y) : -1;
     if (verb_index >= 0) {
         yaat_pending_interaction_clear();
         yaat_pending_room_change_clear();
@@ -3459,7 +3459,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
         }
         return;
     }
-    inventory_index = yaat_inventory_slot_at(backbuffer_x, backbuffer_y);
+    inventory_index = g_player_visible ? yaat_inventory_slot_at(backbuffer_x, backbuffer_y) : -1;
     if (inventory_index >= 0) {
         yaat_pending_room_change_clear();
         yaat_click_inventory_item(g_inventory[inventory_index]);
@@ -3488,7 +3488,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
         return;
     }
 
-    if (strcmp(yaat_active_verb(), "walk") == 0) {
+    if (g_player_visible && strcmp(yaat_active_verb(), "walk") == 0) {
         if (g_runtime_load.ok) {
             for (i = g_runtime_load.room.object_count - 1; i >= 0; --i) {
                 YaatRuntimeObject *object = &g_runtime_load.room.objects[i];
@@ -3723,7 +3723,7 @@ static void yaat_update_hover_target_at(int backbuffer_x, int backbuffer_y)
     YaatRuntimeObject *object;
     YaatRuntimeHotspot *hotspot;
 
-    inventory_index = yaat_inventory_slot_at(backbuffer_x, backbuffer_y);
+    inventory_index = g_player_visible ? yaat_inventory_slot_at(backbuffer_x, backbuffer_y) : -1;
     object = (g_runtime_load.ok && inventory_index < 0) ? yaat_runtime_object_at(backbuffer_x, backbuffer_y) : 0;
     hotspot = (g_runtime_load.ok && inventory_index < 0 && object == 0) ? yaat_runtime_hotspot_at(backbuffer_x, backbuffer_y) : 0;
     if (inventory_index >= 0) {
@@ -3882,7 +3882,7 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
                 int inventory_index;
                 g_cursor_x = backbuffer_x;
                 g_cursor_y = backbuffer_y;
-                inventory_index = yaat_inventory_slot_at(backbuffer_x, backbuffer_y);
+                inventory_index = g_player_visible ? yaat_inventory_slot_at(backbuffer_x, backbuffer_y) : -1;
                 if (inventory_index >= 0) {
                     yaat_longclick_inventory_item(g_inventory[inventory_index]);
                 } else {
