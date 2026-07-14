@@ -3,6 +3,7 @@
 // Bump this value on each release/commit that changes shipped files. A new cache
 // name makes the service worker download fresh files and delete old caches.
 const CACHE_VERSION = '2026-07-14-5';
+
 const CACHE_NAME = `yaat-${CACHE_VERSION}`;
 const APP_SHELL = [
   './',
