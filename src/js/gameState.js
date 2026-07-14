@@ -13,6 +13,9 @@ export class GameState {
   addItem(id){ if(id && !this.hasItem(id)) this.inventory.push(id); }
   removeItem(id){ this.inventory=this.inventory.filter(x=>x!==id); }
   object(id){ if(!this.objects.has(id)) this.objects.set(id,{visible:true,x:0,y:0,w:0,h:0,sprite:''}); return this.objects.get(id); }
+  currentRoomRecord(){ return (this.package.rooms||[]).find(r=>r.id===this.currentRoom) || null; }
+  entityAt(x,y){ const room=this.currentRoomRecord(); if(!room) return null; for(let i=(room.entities||[]).length-1;i>=0;i--){ const ent=room.entities[i]; const obj=this.object(ent.id); const ex=obj.x ?? ent.x, ey=obj.y ?? ent.y, ew=obj.w ?? ent.w, eh=obj.h ?? ent.h; if(obj.visible && x>=ex && y>=ey && x<ex+ew && y<ey+eh) return { entity:ent, state:obj }; } return null; }
+  hoverTargetAt(x,y){ const hit=this.entityAt(x,y); if(!hit) return { kind:'empty', id:'', name:'' }; const kind=hit.entity.kind===0 ? 'hotspot' : 'object'; return { kind, id:hit.entity.id, name:hit.entity.name || hit.entity.id }; }
   snapshot(){ return { currentRoom:this.currentRoom, inventory:[...this.inventory], vars:Object.fromEntries([...this.vars].map(([k,v])=>[k,cloneValue(v)])), objects:Object.fromEntries(this.objects), player:{...this.player} }; }
 }
 export function valueTruthy(v){ if(!v) return false; if(v.kind===VALUE_KIND.STRING) return v.string.length>0; if(v.kind===VALUE_KIND.INT) return v.int!==0; return !!v.bool; }
