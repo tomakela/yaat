@@ -10,6 +10,7 @@ object brass_key {
   }
 
   on use {
-    say player "I should try this key on a lock."  # @scripts.inventory.2
+    drop brass_key brass_key
+    say player "I set the brass key back down."  # @scripts.inventory.2
   }
 }
