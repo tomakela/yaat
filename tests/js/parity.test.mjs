@@ -111,3 +111,25 @@ test('JavaScript VM matches C condition semantics for inventory and mixed orderi
   assert.deepEqual(vm.runCommands(0, 2).map(e => e.type === 'say' ? e.text : e.item), ['has key', 'lexical-success']);
   assert.deepEqual(state.inventory, ['key', 'lexical-success']);
 });
+
+test('JavaScript hover target refresh ignores a picked-up ground object', () => {
+  const pkg = {
+    vars: [],
+    rooms: [{
+      id: 'start', label: 'Start', color: 0, events: [],
+      entities: [
+        { kind: 1, id: 'locked_door', name: 'Locked door', x: 10, y: 10, w: 20, h: 20, visible: true, events: [] },
+        { kind: 1, id: 'brass_key', name: 'Brass key', x: 10, y: 10, w: 20, h: 20, visible: true, events: [] },
+      ],
+    }],
+    commands: [],
+    globalEvents: [],
+  };
+  const state = new GameState(pkg);
+
+  assert.deepEqual(state.hoverTargetAt(15, 15), { kind: 'object', id: 'brass_key', name: 'Brass key' });
+  state.object('brass_key').visible = false;
+  state.addItem('brass_key');
+
+  assert.deepEqual(state.hoverTargetAt(15, 15), { kind: 'object', id: 'locked_door', name: 'Locked door' });
+});
