@@ -292,3 +292,18 @@ Start with audio support in this order:
 2. IMA ADPCM WAV for lightweight compression.
 3. A custom simple ADPCM decoder if deterministic behavior is needed.
 4. Avoid MP3 and OGG initially unless their decoders are proven to build without modern CRT assumptions.
+
+### 7. Refresh the bundled demo for current script-first interaction behavior
+
+Update the placeholder demo asset tree so it reflects the current runtime contract and covers missing authoring features.
+
+Include at minimum:
+
+1. Remove redundant `script_event=on_click` entries from ordinary pickup objects such as the brass key when the `.yaat` script already provides `on click`.
+2. Keep `script_event` only where legacy tools still need it as a metadata hint, and document each remaining use.
+3. Add or verify demo coverage for `pickup`, `hide`, `show`, `set_sprite`, inventory `on look`, inventory `on use`, item-specific `on use <item>`, `consume`, and `drop`.
+4. Add visible before/after graphics states for at least one object that changes in place, using `set_sprite`, so authors can see how graphic changes are actualized independently from pickup visibility.
+5. Keep the demo's INI metadata, `.yaat` scripts, strings, and HTML/browser-host demo in sync when behavior changes.
+6. Add parity or smoke tests that prove pickup hides the room object, adds the inventory item, and redraws without requiring `script_event=on_click`.
+
+Use the existing brass-key interaction as the cleanup example and add a second feature-demo interaction only if it demonstrates behavior not already covered by the key/door puzzle.
