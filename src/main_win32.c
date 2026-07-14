@@ -127,6 +127,7 @@ static char g_hover_target_id[YAAT_ASSET_MAX_NAME];
 static char g_hover_target_name[YAAT_ASSET_MAX_NAME];
 static char g_command_feedback[YAAT_COMMAND_FEEDBACK_MAX];
 static char g_command_feedback_override[YAAT_COMMAND_FEEDBACK_MAX];
+static int g_command_feedback_override_remaining_ms;
 
 static YaatSaveMenuMode g_save_menu_mode;
 static int g_save_menu_selected_slot;
@@ -627,6 +628,7 @@ static void yaat_set_look_command_feedback(const char *target)
     yaat_format_command_feedback("look", "", target != 0 ? target : "");
     yaat_copy(g_command_feedback_override, sizeof(g_command_feedback_override),
               g_command_feedback, strlen(g_command_feedback));
+    g_command_feedback_override_remaining_ms = 1000;
 }
 
 static void yaat_update_command_feedback(void)
@@ -635,12 +637,13 @@ static void yaat_update_command_feedback(void)
     const char *hover_name = yaat_hover_target_display_name();
     const char *target = g_hover_target_kind != YAAT_HOVER_EMPTY ? hover_name : "";
 
-    if (g_dialogue_visible && g_command_feedback_override[0] != '\0') {
+    if (g_command_feedback_override[0] != '\0') {
         yaat_copy(g_command_feedback, sizeof(g_command_feedback),
                   g_command_feedback_override, strlen(g_command_feedback_override));
         return;
     }
     g_command_feedback_override[0] = '\0';
+    g_command_feedback_override_remaining_ms = 0;
 
     if (strcmp(verb, "use") == 0 && g_selected_inventory[0] != '\0') {
         yaat_format_command_feedback(verb,
@@ -2191,6 +2194,13 @@ static void yaat_update_script_timers(void)
     if (g_script_wait_remaining_ms > 0) {
         g_script_wait_remaining_ms -= YAAT_FRAME_TIMER_MS;
         if (g_script_wait_remaining_ms < 0) g_script_wait_remaining_ms = 0;
+    }
+    if (g_command_feedback_override_remaining_ms > 0) {
+        g_command_feedback_override_remaining_ms -= YAAT_FRAME_TIMER_MS;
+        if (g_command_feedback_override_remaining_ms <= 0) {
+            g_command_feedback_override_remaining_ms = 0;
+            g_command_feedback_override[0] = '\0';
+        }
     }
     if (g_script_resume_active && g_script_wait_remaining_ms <= 0 &&
         g_cutscene_overlay_remaining_ms <= 0) {
