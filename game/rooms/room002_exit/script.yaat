@@ -1,6 +1,7 @@
 # game/rooms/room002_exit/script.yaat
 
 var demo_complete = false
+var exit_lamp_lit = false
 
 room room002_exit {
   background "rooms/room002_exit/background.bmp"
@@ -50,7 +51,47 @@ room room002_exit {
     size 24, 48
 
     on look {
-      say player "The lamp uses a placeholder BMP sprite."  # @rooms.room002_exit.6
+      if exit_lamp_lit {
+        say player "The lamp is lit with a swapped sprite."  # @rooms.room002_exit.6
+      } else {
+        say player "The lamp is dim. The brass key might bridge its contacts."  # @rooms.room002_exit.7
+      }
+    }
+
+    on use brass_key {
+      if exit_lamp_lit {
+        say player "The lamp is already lit."  # @rooms.room002_exit.8
+      } else {
+        set exit_lamp_lit = true
+        set_sprite exit_lamp "rooms/room002_exit/objects/exit_lamp_lit.bmp"
+        hide demo_badge_dim
+        show demo_badge_lit
+        consume brass_key
+        say player "The key completes the circuit, the lamp lights, and the key is spent."  # @rooms.room002_exit.9
+      }
+    }
+  }
+
+  object demo_badge_dim {
+    name "Dim Demo Badge"
+    sprite "rooms/room002_exit/objects/demo_badge_dim.bmp"
+    at 210, 118
+    size 18, 12
+
+    on look {
+      say narrator "This badge will be hidden when the lamp feature demo runs."  # @rooms.room002_exit.10
+    }
+  }
+
+  object demo_badge_lit {
+    name "Lit Demo Badge"
+    sprite "rooms/room002_exit/objects/demo_badge_lit.bmp"
+    at 210, 118
+    size 18, 12
+    visible false
+
+    on look {
+      say narrator "This badge was shown by the lamp feature demo."  # @rooms.room002_exit.11
     }
   }
 }

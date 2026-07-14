@@ -295,6 +295,18 @@ Start with audio support in this order:
 
 ### 7. Refresh the bundled demo for current script-first interaction behavior
 
+Status: implemented in the placeholder demo asset tree. Keep this checklist as regression guidance for future demo changes.
+
+Covered behaviors:
+
+1. Redundant `script_event=on_click` entries are removed from ordinary pickup objects such as the brass key when the `.yaat` script already provides `on click`.
+2. Remaining `script_event` entries are kept only as documented legacy tool hints.
+3. Demo coverage includes `pickup`, `hide`, `show`, `set_sprite`, inventory `on look`, inventory `on use`, item-specific `on use <item>`, `consume`, and `drop`.
+4. The exit lamp has visible before/after graphics states using `set_sprite`, so authors can see how graphic changes are actualized independently from pickup visibility.
+5. The demo's INI metadata, `.yaat` scripts, strings, and HTML/browser-host demo are kept in sync for the refreshed behavior.
+6. Parity/smoke tests cover pickup hiding, inventory addition, redraw behavior without `script_event=on_click`, and the new visibility/sprite/inventory command mix.
+
+The existing brass-key interaction is the cleanup example; the exit-lamp interaction is the second feature demo for behavior not already covered by the key/door puzzle.
 Update the placeholder demo asset tree so it reflects the current runtime contract and covers missing authoring features.
 
 Include at minimum:

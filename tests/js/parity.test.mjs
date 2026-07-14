@@ -133,3 +133,51 @@ test('JavaScript hover target refresh ignores a picked-up ground object', () => 
 
   assert.deepEqual(state.hoverTargetAt(15, 15), { kind: 'object', id: 'locked_door', name: 'Locked door' });
 });
+
+test('JavaScript VM covers demo refresh visibility, sprite, drop, and consume commands', () => {
+  const command = (kind, fields = {}) => ({
+    kind,
+    a: '',
+    b: '',
+    stringId: '',
+    boolValue: 0,
+    intValue: 0,
+    value: { kind: VALUE_KIND.BOOL, bool: false, int: 0, string: '' },
+    conditionOp: CONDITION_OP.TRUTHY,
+    firstChild: 0,
+    childCount: 0,
+    firstElseChild: 0,
+    elseChildCount: 0,
+    ...fields,
+  });
+  const pkg = {
+    vars: [],
+    rooms: [{
+      id: 'room002_exit', label: 'Exit Room', color: 0, events: [{ name: 'on_use', item: 'brass_key', firstCommand: 0, commandCount: 6 }],
+      entities: [
+        { kind: 1, id: 'exit_lamp', name: 'Exit Lamp', x: 236, y: 64, w: 24, h: 48, visible: true, events: [] },
+        { kind: 1, id: 'demo_badge_dim', name: 'Dim Demo Badge', x: 210, y: 118, w: 18, h: 12, visible: true, events: [] },
+        { kind: 1, id: 'demo_badge_lit', name: 'Lit Demo Badge', x: 210, y: 118, w: 18, h: 12, visible: false, events: [] },
+        { kind: 1, id: 'brass_key', name: 'Brass Key', x: 132, y: 148, w: 18, h: 10, visible: false, events: [] },
+      ],
+    }],
+    commands: [
+      command(COMMAND_KIND.SET_OBJECT_SPRITE, { a: 'exit_lamp', b: 'rooms/room002_exit/objects/exit_lamp_lit.bmp' }),
+      command(COMMAND_KIND.HIDE, { a: 'demo_badge_dim' }),
+      command(COMMAND_KIND.SHOW, { a: 'demo_badge_lit' }),
+      command(COMMAND_KIND.DROP, { a: 'spare_key', b: 'brass_key' }),
+      command(COMMAND_KIND.CONSUME, { a: 'brass_key' }),
+      command(COMMAND_KIND.SAY, { a: 'player', b: 'Feature demo complete.' }),
+    ],
+    globalEvents: [],
+  };
+  const state = new GameState(pkg, { currentRoom: 'room002_exit', inventory: ['brass_key', 'spare_key'] });
+  const effects = new ScriptVm(pkg, state).runEvent(pkg.rooms[0].events[0]);
+
+  assert.deepEqual(effects.map(e => e.type), ['setObjectSprite', 'hide', 'show', 'drop', 'consume', 'say']);
+  assert.deepEqual(state.inventory, []);
+  assert.deepEqual(state.object('exit_lamp').sprite, 'rooms/room002_exit/objects/exit_lamp_lit.bmp');
+  assert.equal(state.object('demo_badge_dim').visible, false);
+  assert.equal(state.object('demo_badge_lit').visible, true);
+  assert.equal(state.object('brass_key').visible, true);
+});
