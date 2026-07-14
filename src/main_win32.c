@@ -176,6 +176,7 @@ static void yaat_update_script_timers(void);
 static void yaat_open_save_menu(YaatSaveMenuMode mode);
 static const char *yaat_active_verb(void);
 static void yaat_update_command_feedback(void);
+static void yaat_update_hover_target_at(int backbuffer_x, int backbuffer_y);
 static const char *yaat_player_walk_animation_for_delta(int dx, int dy);
 static const char *yaat_player_idle_animation(void);
 static int yaat_player_current_step_pixels(void);
@@ -3093,6 +3094,7 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
                 yaat_runtime_execute_entity_event(id, event_name);
                 yaat_copy(g_selected_verb, sizeof(g_selected_verb), "use", strlen("use"));
                 yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), object->inventory_item, strlen(object->inventory_item));
+                yaat_update_hover_target_at(x, y);
             } else {
                 yaat_runtime_execute_entity_event(id, event_name);
             }
@@ -3578,20 +3580,11 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
     yaat_click_game(backbuffer_x, backbuffer_y, 0);
 }
 
-static void yaat_update_cursor_from_client(HWND window, int client_x, int client_y)
+static void yaat_update_hover_target_at(int backbuffer_x, int backbuffer_y)
 {
-    int backbuffer_x;
-    int backbuffer_y;
     int inventory_index;
     YaatRuntimeObject *object;
     YaatRuntimeHotspot *hotspot;
-    const char *cursor_state;
-    LPCSTR win32_cursor;
-
-    if (!yaat_client_to_backbuffer(window, client_x, client_y,
-                                   &backbuffer_x, &backbuffer_y)) return;
-    g_cursor_x = backbuffer_x;
-    g_cursor_y = backbuffer_y;
 
     inventory_index = yaat_inventory_slot_at(backbuffer_x, backbuffer_y);
     object = (g_runtime_load.ok && inventory_index < 0) ? yaat_runtime_object_at(backbuffer_x, backbuffer_y) : 0;
@@ -3609,9 +3602,23 @@ static void yaat_update_cursor_from_client(HWND window, int client_x, int client
     } else {
         yaat_set_hover_target(YAAT_HOVER_EMPTY, "", "");
     }
-    cursor_state = hotspot != 0 ? hotspot->cursor : "arrow";
-    yaat_copy(g_cursor_state, sizeof(g_cursor_state), cursor_state,
-              strlen(cursor_state));
+    yaat_copy(g_cursor_state, sizeof(g_cursor_state),
+              hotspot != 0 ? hotspot->cursor : "arrow",
+              strlen(hotspot != 0 ? hotspot->cursor : "arrow"));
+}
+
+static void yaat_update_cursor_from_client(HWND window, int client_x, int client_y)
+{
+    int backbuffer_x;
+    int backbuffer_y;
+    LPCSTR win32_cursor;
+
+    if (!yaat_client_to_backbuffer(window, client_x, client_y,
+                                   &backbuffer_x, &backbuffer_y)) return;
+    g_cursor_x = backbuffer_x;
+    g_cursor_y = backbuffer_y;
+
+    yaat_update_hover_target_at(backbuffer_x, backbuffer_y);
 
     win32_cursor = strcmp(g_cursor_state, "use") == 0 ? IDC_HAND : IDC_ARROW;
     (void)win32_cursor;
