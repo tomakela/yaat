@@ -2812,7 +2812,7 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
             }
             if (strcmp(yaat_active_verb(), "use") == 0 && g_selected_inventory[0] == '\0' && object->inventory_item[0] != '\0') {
                 g_selected_verb[0] = '\0';
-                yaat_runtime_execute_entity_event(id, event_name);
+                yaat_runtime_execute_entity_event(id, "take");
                 yaat_copy(g_selected_verb, sizeof(g_selected_verb), "use", strlen("use"));
                 yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), object->inventory_item, strlen(object->inventory_item));
                 yaat_update_hover_target_at(x, y);
