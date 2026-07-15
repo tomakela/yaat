@@ -115,6 +115,15 @@ static int g_script_resume_first;
 static int g_script_resume_count;
 static int g_script_resume_index;
 static int g_splash_remaining_ms = YAAT_SPLASH_DURATION_MS;
+static YaatSavedRuntimeObjectState g_saved_runtime_objects[YAAT_MAX_SAVED_RUNTIME_OBJECTS];
+static int g_saved_runtime_object_count;
+static int g_suppress_runtime_state_capture;
+static char g_dialogue_speaker[32];
+static char g_dialogue_text[YAAT_TEXT_MAX];
+static int g_dialogue_visible;
+static int g_dialogue_choice_visible;
+static YaatRuntimeDialog g_active_dialog;
+static char g_active_dialog_node[YAAT_ASSET_MAX_NAME];
 
 typedef enum YaatHoverTargetKind {
     YAAT_HOVER_EMPTY = 0,
