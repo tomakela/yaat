@@ -2514,10 +2514,6 @@ static void yaat_render_scene(void)
         yaat_draw_error_scene();
     }
     yaat_draw_verb_ui();
-    if (g_dialogue_visible) {
-        yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_speaker, 0x00ffd060UL);
-        yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 25, g_dialogue_text, 0x00f0f0f0UL);
-    }
     yaat_draw_dialogue_choices();
     if (g_cutscene_overlay_visible) {
         yaat_draw_text_block_outlined(24, 17, g_cutscene_overlay_text,
