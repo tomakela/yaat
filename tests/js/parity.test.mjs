@@ -260,8 +260,11 @@ test('browser demo keeps exit locked until flag clears and supports ground-item 
 
   assert.match(dataLoader, /hotspot\.requiredFlag = 'door_locked', hotspot\.requiredFlagValue = false/);
   assert.match(mainScript, /o\.requiredFlag==null\|\|state\.vars\[o\.requiredFlag\]===o\.requiredFlagValue/);
+  assert.match(mainScript, /function queueChainedGroundUse\(o\)/);
   assert.match(mainScript, /state\.pending\?\.inventoryItem&&state\.verb==='use'&&!state\.selectedInv&&o!==state\.pending/);
+  assert.match(mainScript, /if\(queueChainedGroundUse\(o\)\) return/);
   assert.match(mainScript, /state\.chained=o/);
+  assert.match(mainScript, /if\(!\(o\.click&&o\.click\.call\(o\)\)\)\{ if\(o\.take\) o\.take\.call\(o\); else cant\(verb\); \}/);
   assert.match(mainScript, /if\(state\.inv\.includes\(o\.inventoryItem\)\)\{ state\.verb='use'; state\.selectedInv=o\.inventoryItem; if\(continueChainedInteraction\(\)\) return; \}/);
 });
 
