@@ -26,7 +26,7 @@ room room001_intro {
       say player "A small brass key is lying on the floor."  # @rooms.room001_intro.3
     }
 
-    on take nowalk {
+    on take {
       pickup brass_key brass_key
       set took_key = true
       play_sound "audio/sfx/pickup_key.wav"
@@ -65,7 +65,7 @@ room room001_intro {
       }
     }
 
-    on use brass_key nowalk {
+    on use brass_key {
       if door_locked {
         play_sound "audio/sfx/door_unlock.wav"
         shake 350 6
