@@ -27,7 +27,7 @@ function canvasPoint(e){ const m=canvasMetrics(); return {x:clamp((e.clientX-m.l
 function setCursorFromClient(e){ const p=canvasPoint(e); state.cx=p.x; state.cy=p.y; }
 function moveCursorByClientDelta(dx,dy){ const m=canvasMetrics(); state.cx=clamp(state.cx+dx*TOUCH_CURSOR_SENSITIVITY/m.scale,0,W-1); state.cy=clamp(state.cy+dy*TOUCH_CURSOR_SENSITIVITY/m.scale,0,H-1); }
 function hashColor(s, fallback){ let h=fallback; for (const ch of s) h=((h*33)^ch.charCodeAt(0))>>>0; return '#'+(h&0xffffff).toString(16).padStart(6,'0'); }
-const {verbs, verbLabels, inventoryDefs, rooms}=await loadGameData();
+const {verbs, verbLabels, inventoryDefs, rooms, firstRoom}=await loadGameData();
 
 const state={splashUntil:performance.now()+SPLASH_MS,room:'room000_start',px:160,py:100,tx:160,ty:100,face:1,cx:160,cy:100,verb:'walk',selectedInv:'',inv:[],vars:{door_locked:true,intro_seen:false,took_key:false,demo_complete:false,exit_lamp_lit:false},dialog:null,dialogUntil:0,sayQueue:[],actionSentence:'',actionUntil:0,shakeUntil:0,shakeMag:0,pending:null,suppressedExit:null};
 function showSay(speaker,msg){ state.dialog={speaker,msg,t:performance.now()}; state.dialogUntil=performance.now()+DIALOG_MS; }
@@ -105,4 +105,4 @@ function attachAction(target, dataKey, runtimeKey){ if(target[dataKey]) target[r
 function hydrateRooms(){ for(const room of Object.values(rooms)){ if(room.enterAction) room.enter=roomActions[room.enterAction]; else if(room.enterText) room.enter=room.enterText; for(const item of [...room.hotspots, ...room.objects]){ attachAction(item,'lookAction','look'); attachAction(item,'useAction','use'); attachAction(item,'takeAction','take'); attachAction(item,'visibleAction','visible'); attachAction(item,'requiresAction','requires'); attachAction(item,'spriteAction','sprite'); } } }
 hydrateRooms();
 preloadImages(collectImagePaths()).then(()=>{ state.assetsReady=true; });
-go('room000_start',160,100); loop();
+go(firstRoom,160,100); loop();

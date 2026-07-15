@@ -1,4 +1,0 @@
-{
-  "verbs": ["walk", "look", "use", "talk", "take", "open", "close"],
-  "verbLabels": {"walk":"Walk to","look":"Look at","use":"Use","talk":"Talk to","take":"Take","open":"Open","close":"Close"}
-}
