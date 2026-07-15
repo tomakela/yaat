@@ -265,13 +265,6 @@ static void yaat_update_shake(void)
     g_shake_offset_y = yaat_clamp_int(yaat_shake_sample(g_shake_elapsed_ms + 53, magnitude), -32, 32);
 }
 
-static double yaat_clamp_double(double value, double minimum, double maximum)
-{
-    if (value < minimum) return minimum;
-    if (value > maximum) return maximum;
-    return value;
-}
-
 static void yaat_copy(char *dst, size_t dst_size, const char *src, size_t len)
 {
     if (dst_size == 0) return;
@@ -2565,8 +2558,17 @@ static void yaat_runtime_execute_entity_event(const char *entity_id, const char 
     entity = yaat_entity_by_id(room, entity_id);
     if (entity == 0) return;
 
-    (void)script_event;
-    yaat_copy(event_name, sizeof(event_name), yaat_active_verb(), strlen(yaat_active_verb()));
+    if (strcmp(yaat_active_verb(), "use") == 0 && g_selected_inventory[0] != '\0') {
+        yaat_copy(event_name, sizeof(event_name), "use", strlen("use"));
+    } else if (script_event != 0 && script_event[0] != '\0') {
+        const char *normalized_event = script_event;
+        if (strncmp(normalized_event, "on_", 3) == 0) normalized_event += 3;
+        yaat_copy(event_name, sizeof(event_name), normalized_event,
+                  strlen(normalized_event));
+    } else {
+        yaat_copy(event_name, sizeof(event_name), yaat_active_verb(),
+                  strlen(yaat_active_verb()));
+    }
     if (strcmp(event_name, "use") == 0 && g_selected_inventory[0] != '\0') {
         YaatRuntimeHotspot *hotspot = yaat_runtime_hotspot_by_id(entity_id);
         yaat_execute_entity_verb(entity, event_name, g_selected_inventory, 0);
@@ -2844,16 +2846,6 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
             }
             return 1;
         }
-    }
-    return 0;
-}
-
-static YaatEvent *yaat_find_exact_event(YaatEvent *events, int count, const char *name, const char *item)
-{
-    int i;
-    for (i = 0; i < count; ++i) {
-        if (strcmp(events[i].name, name) == 0 &&
-            strcmp(events[i].item, item != 0 ? item : "") == 0) return &events[i];
     }
     return 0;
 }
