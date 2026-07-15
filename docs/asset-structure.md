@@ -119,7 +119,7 @@ Recommended room files:
 - `zmask.bmp`: Optional depth/occlusion mask for drawing the player behind foreground objects.
 - `hotspots.ini`: Clickable regions and cursor/action hints.
 - `objects.ini`: Initial room objects, sprites, positions, visibility, and inventory links.
-- `exits.ini`: Simple room-to-room transitions for data-driven exits.
+- `exits.ini`: Simple room-to-room transitions for data-driven exits. Exits may set `target_x`, `target_y`, and `target_direction` to control the player entry point and facing direction in the destination room.
 - `script.yaat`: Room-specific script using the YAAT script language.
 
 ### Example room metadata

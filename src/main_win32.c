@@ -191,6 +191,7 @@ static void yaat_update_command_feedback(void);
 static void yaat_update_hover_target_at(int backbuffer_x, int backbuffer_y);
 static const char *yaat_player_walk_animation_for_delta(int dx, int dy);
 static const char *yaat_player_idle_animation(void);
+static void yaat_player_face_direction(const char *direction);
 static int yaat_player_current_step_pixels(void);
 static YaatEntity *yaat_entity_by_id(YaatRoom *room, const char *id);
 static YaatRuntimeObject *yaat_runtime_object_by_id(const char *id);
@@ -824,6 +825,24 @@ static const char *yaat_player_idle_animation(void)
     if (g_player_facing_vertical < 0) return "idle_up";
     if (g_player_facing_vertical > 0) return "idle_down";
     return g_player_facing_right ? "idle_right" : "idle_left";
+}
+
+static void yaat_player_face_direction(const char *direction)
+{
+    if (direction == 0 || direction[0] == '\0') return;
+    if (strcmp(direction, "left") == 0 || strcmp(direction, "west") == 0) {
+        g_player_facing_right = 0;
+        g_player_facing_vertical = 0;
+    } else if (strcmp(direction, "right") == 0 || strcmp(direction, "east") == 0) {
+        g_player_facing_right = 1;
+        g_player_facing_vertical = 0;
+    } else if (strcmp(direction, "up") == 0 || strcmp(direction, "north") == 0 ||
+               strcmp(direction, "away") == 0) {
+        g_player_facing_vertical = -1;
+    } else if (strcmp(direction, "down") == 0 || strcmp(direction, "south") == 0 ||
+               strcmp(direction, "toward") == 0) {
+        g_player_facing_vertical = 1;
+    }
 }
 
 static int yaat_player_current_step_pixels(void)
@@ -1922,8 +1941,9 @@ static void yaat_enter_room(int room_index)
     YaatEvent *enter_event;
     g_current_room = room_index;
     yaat_runtime_request_room_assets(g_rooms[g_current_room].id);
-    g_player_x = YAAT_BACKBUFFER_WIDTH / 2;
-    g_player_y = YAAT_PLAYFIELD_HEIGHT - 20;
+    g_player_x = g_runtime_load.room.has_entry_x ? g_runtime_load.room.entry_x : YAAT_BACKBUFFER_WIDTH / 2;
+    g_player_y = g_runtime_load.room.has_entry_y ? g_runtime_load.room.entry_y : YAAT_PLAYFIELD_HEIGHT - 20;
+    yaat_player_face_direction(g_runtime_load.room.entry_direction);
     g_target_x = g_player_x;
     g_target_y = g_player_y;
     yaat_clear_player_path();
@@ -2668,6 +2688,7 @@ static void yaat_runtime_change_room(const YaatRuntimeHotspot *hotspot)
     if (script_room_index >= 0) g_current_room = script_room_index;
     g_player_x = player_x;
     g_player_y = player_y;
+    yaat_player_face_direction(hotspot->target_direction);
     g_target_x = g_player_x;
     g_target_y = g_player_y;
     yaat_clear_player_path();
