@@ -1726,50 +1726,65 @@ static const char *yaat_active_verb(void)
     return g_selected_verb[0] != '\0' ? g_selected_verb : "walk";
 }
 
+static void yaat_get_runtime_string(const char *key, const char *fallback,
+                                    char *out, size_t out_size)
+{
+    const char *text;
+    if (out_size == 0) return;
+    text = yaat_runtime_lookup_string(&g_runtime_state.strings, key, fallback);
+    yaat_copy(out, out_size, text, strlen(text));
+}
+
+static void yaat_say_runtime_string(const char *key, const char *fallback)
+{
+    char text[YAAT_TEXT_MAX];
+    yaat_get_runtime_string(key, fallback, text, sizeof(text));
+    yaat_player_say(text);
+}
 
 static void yaat_default_inventory_action_sentence(const char *verb)
 {
     if (verb == 0 || verb[0] == '\0' || strcmp(verb, "walk") == 0) {
-        yaat_player_say("I can't walk there.");
+        yaat_say_runtime_string("inventory.default.walk", "I can't walk there.");
     } else if (strcmp(verb, "use") == 0) {
-        yaat_player_say("I can't use those together.");
+        yaat_say_runtime_string("inventory.default.use", "I can't use those together.");
     } else if (strcmp(verb, "look") == 0) {
-        yaat_player_say("I don't see anything special about it.");
+        yaat_say_runtime_string("inventory.default.look", "I don't see anything special about it.");
     } else if (strcmp(verb, "read") == 0) {
-        yaat_player_say("There is nothing on it to read.");
+        yaat_say_runtime_string("inventory.default.read", "There is nothing on it to read.");
     } else if (strcmp(verb, "take") == 0) {
-        yaat_player_say("I already have it.");
+        yaat_say_runtime_string("inventory.default.take", "I already have it.");
     } else if (strcmp(verb, "talk") == 0) {
-        yaat_player_say("It doesn't answer.");
+        yaat_say_runtime_string("inventory.default.talk", "It doesn't answer.");
     } else if (strcmp(verb, "open") == 0) {
-        yaat_player_say("I can't open it.");
+        yaat_say_runtime_string("inventory.default.open", "I can't open it.");
     } else if (strcmp(verb, "close") == 0) {
-        yaat_player_say("I can't close it.");
+        yaat_say_runtime_string("inventory.default.close", "I can't close it.");
     } else {
-        yaat_player_say("I can't do that with it.");
+        yaat_say_runtime_string("inventory.default.other", "I can't do that with it.");
     }
 }
 
 static void yaat_default_action_sentence(const char *verb)
 {
     if (verb == 0 || verb[0] == '\0' || strcmp(verb, "walk") == 0) {
-        yaat_player_say("I can't walk there.");
+        yaat_say_runtime_string("action.default.walk", "I can't walk there.");
     } else if (strcmp(verb, "use") == 0) {
-        yaat_player_say("I can't use that.");
+        yaat_say_runtime_string("action.default.use", "I can't use that.");
     } else if (strcmp(verb, "look") == 0) {
-        yaat_player_say("I don't see anything special.");
+        yaat_say_runtime_string("action.default.look", "I don't see anything special.");
     } else if (strcmp(verb, "read") == 0) {
-        yaat_player_say("There is nothing to read.");
+        yaat_say_runtime_string("action.default.read", "There is nothing to read.");
     } else if (strcmp(verb, "take") == 0) {
-        yaat_player_say("I can't take that.");
+        yaat_say_runtime_string("action.default.take", "I can't take that.");
     } else if (strcmp(verb, "talk") == 0) {
-        yaat_player_say("I can't talk to that.");
+        yaat_say_runtime_string("action.default.talk", "I can't talk to that.");
     } else if (strcmp(verb, "open") == 0) {
-        yaat_player_say("I can't open that.");
+        yaat_say_runtime_string("action.default.open", "I can't open that.");
     } else if (strcmp(verb, "close") == 0) {
-        yaat_player_say("I can't close that.");
+        yaat_say_runtime_string("action.default.close", "I can't close that.");
     } else {
-        yaat_player_say("I can't do that.");
+        yaat_say_runtime_string("action.default.other", "I can't do that.");
     }
 }
 
