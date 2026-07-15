@@ -1,3 +1,4 @@
 *.obj
 *.err
+*save*.txt
 build/*.exe
