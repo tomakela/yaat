@@ -71,7 +71,7 @@ test('JavaScript VM mutates explicit game state and returns host effects', () =>
   assert.deepEqual(state.inventory, ['bonus', 'key']);
   assert.equal(state.currentRoom, 'next');
   assert.deepEqual(state.object('key_obj'), { visible: true, x: 30, y: 40, w: 8, h: 8, sprite: '' });
-  assert.deepEqual(state.player, { x: 50, y: 60, visible: true });
+  assert.deepEqual(state.player, { x: 50, y: 60, visible: true, facing: 'down' });
 });
 
 test('JavaScript VM matches C condition semantics for inventory and mixed ordering', () => {
@@ -217,7 +217,7 @@ test('JavaScript room-change regions wait for player motion to complete', () => 
     globalEvents: [],
   };
   const state = new GameState(pkg, { currentRoom: 'room001_intro', playerX: 286, playerY: 159 });
-  const exit = { action: 'change_room', targetRoom: 'room002_exit', requiredFlag: 'door_locked', requiredFlagValue: false };
+  const exit = { action: 'change_room', targetRoom: 'room002_exit', requiredFlag: 'door_locked', requiredFlagValue: false, targetX: 26, targetY: 180, targetDirection: 'right' };
 
   state.setPlayerTarget(120, 159);
   assert.equal(state.tryEnterRoomChangeRegion(exit), false);
@@ -226,4 +226,16 @@ test('JavaScript room-change regions wait for player motion to complete', () => 
   state.player.x = 120;
   assert.equal(state.tryEnterRoomChangeRegion(exit), true);
   assert.equal(state.currentRoom, 'room002_exit');
+  assert.deepEqual(state.player, { x: 26, y: 180, visible: true, facing: 'right' });
+  assert.deepEqual(state.motion, { targetX: 26, targetY: 180 });
+  assert.equal(state.playerIdleAnimation(), 'idle_right');
+});
+
+test('JavaScript room entry metadata sets player position and facing', () => {
+  const pkg = { vars: [], rooms: [{ id: 'start', label: 'Start', color: 0, events: [], entities: [], entryX: 40, entryY: 150, entryDirection: 'left' }], commands: [], globalEvents: [] };
+  const state = new GameState(pkg, { currentRoom: 'start', applyRoomEntry: true });
+
+  assert.deepEqual(state.player, { x: 40, y: 150, visible: true, facing: 'left' });
+  assert.deepEqual(state.motion, { targetX: 40, targetY: 150 });
+  assert.equal(state.playerIdleAnimation(), 'idle_left');
 });
