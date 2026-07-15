@@ -1144,14 +1144,14 @@ static void yaat_add_verb(const char *verb)
 
 static void yaat_load_default_verbs(void)
 {
+    /*
+     * Emergency recovery only: game/actions.ini is the canonical verb list.
+     * Keep this fallback non-game-specific so a missing or broken game folder can
+     * still expose a basic inspection action without baking game UI choices into
+     * the engine.
+     */
     g_verb_count = 0;
     yaat_add_verb("look");
-    yaat_add_verb("use");
-    yaat_add_verb("read");
-    yaat_add_verb("talk");
-    yaat_add_verb("take");
-    yaat_add_verb("open");
-    yaat_add_verb("close");
 }
 
 static void yaat_load_verbs(void)
@@ -1160,10 +1160,12 @@ static void yaat_load_verbs(void)
     size_t buffer_size;
     char *line;
 
-    yaat_load_default_verbs();
-    if (!yaat_asset_read_all(&g_asset_store, "actions.ini", &buffer, &buffer_size)) return;
-
     g_verb_count = 0;
+    if (!yaat_asset_read_all(&g_asset_store, "actions.ini", &buffer, &buffer_size)) {
+        yaat_load_default_verbs();
+        return;
+    }
+
     for (line = strtok((char *)buffer, "\n"); line != 0;
          line = strtok(0, "\n")) {
         char *text = yaat_trim_text(line);
