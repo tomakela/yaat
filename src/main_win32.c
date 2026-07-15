@@ -2012,10 +2012,12 @@ static void yaat_load_script_file(const char *path)
 static void yaat_load_inventory_scripts(void)
 {
     int i;
+    YaatRuntimeInventoryItem *item;
+
     yaat_load_script_file("game/scripts/inventory.yaat");
     yaat_load_script_file("scripts/inventory.yaat");
     for (i = 0; i < g_runtime_load.inventory.item_count; ++i) {
-        YaatRuntimeInventoryItem *item = &g_runtime_load.inventory.items[i];
+        item = &g_runtime_load.inventory.items[i];
         if (item->script[0] != '\0') yaat_load_script_file(item->script);
     }
 }
@@ -2916,23 +2918,7 @@ static void yaat_click_inventory_item(const char *item)
             event = yaat_find_event(entity->events, entity->event_count, "click", 0);
         }
     }
-    entity = yaat_entity_by_id_any_room(item);
-    if (strcmp(g_selected_verb, "use") == 0) {
-        if (g_selected_inventory[0] != '\0' && strcmp(g_selected_inventory, item) != 0 && entity != 0) {
-            event = yaat_find_exact_event(entity->events, entity->event_count, "use", g_selected_inventory);
-            if (event != 0) {
-                yaat_execute_event(event);
-                return;
-            }
-        }
-        yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), item, strlen(item));
-        return;
-    }
     if (entity == 0) return;
-    event = yaat_find_event(entity->events, entity->event_count, g_selected_verb, 0);
-    if (event == 0 && strcmp(g_selected_verb, "click") != 0) {
-        event = yaat_find_event(entity->events, entity->event_count, "click", 0);
-    }
     if (event != 0) {
         yaat_execute_event(event);
     } else if (strcmp(verb, "look") == 0 && (runtime_item = yaat_find_runtime_inventory_item(item)) != 0 && runtime_item->description[0] != '\0') {
@@ -3676,7 +3662,13 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
     }
     case WM_CLOSE: DestroyWindow(window); return 0;
     case WM_DESTROY:
-        KillTimer(window, YAAT_FRAME_TIMER_ID); yaat_winmm_audio_shutdown(&g_audio); yaat_unload_bitmap(&g_font_bitmap); yaat_gdi_renderer_shutdown(&g_renderer); g_renderer_ready = 0; PostQuitMessage(0); return 0;
+        KillTimer(window, YAAT_FRAME_TIMER_ID);
+        yaat_winmm_audio_shutdown(&g_audio);
+        yaat_unload_bitmap(&g_font_bitmap);
+        yaat_gdi_renderer_shutdown(&g_renderer);
+        g_renderer_ready = 0;
+        PostQuitMessage(0);
+        return 0;
     default: break;
     }
     return DefWindowProcA(window, message, w_param, l_param);
