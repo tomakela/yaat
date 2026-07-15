@@ -1,4 +1,4 @@
-import { loadGameData } from './engine/data.js';
+import { loadGameData } from './browserGameData.js';
 
 'use strict';
 const W=320,H=240,PLAY_H=200,PLAYER_W=18,PLAYER_H=34,SPEED=4,SPLASH_MS=2000,DIALOG_MS=2400,TOUCH_CURSOR_SENSITIVITY=1.75,TOUCH_DRAG_THRESHOLD=3,TOUCH_LONGPRESS_MOVE_THRESHOLD=12,TOUCH_LONGPRESS_MS=550;
@@ -27,9 +27,9 @@ function canvasPoint(e){ const m=canvasMetrics(); return {x:clamp((e.clientX-m.l
 function setCursorFromClient(e){ const p=canvasPoint(e); state.cx=p.x; state.cy=p.y; }
 function moveCursorByClientDelta(dx,dy){ const m=canvasMetrics(); state.cx=clamp(state.cx+dx*TOUCH_CURSOR_SENSITIVITY/m.scale,0,W-1); state.cy=clamp(state.cy+dy*TOUCH_CURSOR_SENSITIVITY/m.scale,0,H-1); }
 function hashColor(s, fallback){ let h=fallback; for (const ch of s) h=((h*33)^ch.charCodeAt(0))>>>0; return '#'+(h&0xffffff).toString(16).padStart(6,'0'); }
-const {verbs, verbLabels, inventoryDefs, rooms, firstRoom}=await loadGameData();
+const {verbs, verbLabels, inventoryDefs, rooms, firstRoom, initialVars}=await loadGameData();
 
-const state={splashUntil:performance.now()+SPLASH_MS,room:'room000_start',px:160,py:100,tx:160,ty:100,face:1,cx:160,cy:100,verb:'walk',selectedInv:'',inv:[],vars:{door_locked:true,intro_seen:false,took_key:false,demo_complete:false,exit_lamp_lit:false},dialog:null,dialogUntil:0,sayQueue:[],actionSentence:'',actionUntil:0,shakeUntil:0,shakeMag:0,pending:null,suppressedExit:null};
+const state={playerVisible:true,splashUntil:performance.now()+SPLASH_MS,room:'room000_start',px:160,py:100,tx:160,ty:100,face:1,cx:160,cy:100,verb:'walk',selectedInv:'',inv:[],vars:{...initialVars},dialog:null,dialogUntil:0,sayQueue:[],actionSentence:'',actionUntil:0,shakeUntil:0,shakeMag:0,pending:null,suppressedExit:null};
 function showSay(speaker,msg){ state.dialog={speaker,msg,t:performance.now()}; state.dialogUntil=performance.now()+DIALOG_MS; }
 function say(speaker,msg){ if(state.dialog) state.sayQueue.push({speaker,msg}); else showSay(speaker,msg); }
 function advanceSay(){ const next=state.sayQueue.shift(); if(next) showSay(next.speaker,next.msg); else { state.dialog=null; state.dialogUntil=0; } }
@@ -40,12 +40,9 @@ function tickDialogue(){ if(state.dialog&&performance.now()>=state.dialogUntil) 
 function play(path){ const a=new Audio('game/'+path); a.volume=0.7; a.play().catch(()=>{}); }
 function shake(ms,mag){ state.shakeUntil=performance.now()+ms; state.shakeMag=mag; }
 function go(id,x=160,y=180){ state.room=id; state.px=state.tx=x; state.py=state.ty=y; state.selectedInv=''; state.suppressedExit=null; const e=rooms[id].enter; if(typeof e==='function') e(); else if(e) say('narrator',e); }
-function takeKey(){ if(!state.inv.includes('brass_key')) state.inv.push('brass_key'); state.vars.took_key=true; play('audio/sfx/pickup_key.wav'); say('player','I picked up the brass key.'); }
-function useKeyOnDoor(){ if(state.vars.door_locked){ play('audio/sfx/door_unlock.wav'); shake(350,6); state.vars.door_locked=false; say('player','The brass key turns, and the door unlocks.'); } else say('player','The door is already unlocked.'); }
-function lightLamp(){ if(state.vars.exit_lamp_lit){ say('player','The lamp is already lit.'); return; } state.vars.exit_lamp_lit=true; state.inv=state.inv.filter(id=>id!=='brass_key'); state.selectedInv=''; say('player','The key completes the circuit, the lamp lights, and the key is spent.'); }
 function deselectVerb(){ state.verb='walk'; state.selectedInv=''; }
 function cant(verb){ const lines={look:"I don't see anything special.",use:"I can't use that.",talk:"I can't talk to that.",take:"I can't take that.",open:"I can't open that.",close:"I can't close that."}; say('player',lines[verb]||"I can't do that."); }
-function roomItems(){ const r=rooms[state.room]; return [...r.hotspots, ...r.objects.filter(o=> typeof o.visible==='function'?o.visible():o.visible!==false)]; }
+function roomItems(){ const r=rooms[state.room]; return [...r.hotspots, ...r.objects.filter(visibleFor)]; }
 function at(x,y){ const a=roomItems(); for(let i=a.length-1;i>=0;i--){ const o=a[i]; if(x>=o.x&&y>=o.y&&x<o.x+o.w&&y<o.y+o.h) return o; } return null; }
 function walkToObj(o){ state.tx=o.walkX??clamp(o.x+(o.w>>1),PLAYER_W/2,W-PLAYER_W/2); state.ty=o.walkY??clamp(o.y+o.h-1,PLAYER_H,PLAY_H-1); }
 function canChangeRoom(o){ return !!(o&&o.targetRoom&&(!o.requires||o.requires())); }
@@ -62,7 +59,7 @@ function drawBmp(path,x,y,w,h){ const im=img(path); if(imageLoaded(im)) ctx.draw
 function playerSpritePath(moving){ if(moving) return state.face?'graphics/sprites/player_walk_right.bmp':'graphics/sprites/player_walk_left.bmp'; return state.face?'graphics/sprites/player_idle_right.bmp':'graphics/sprites/player_idle_left.bmp'; }
 function drawPlayer(sx,sy){ const moving=Math.abs(state.px-state.tx)+Math.abs(state.py-state.ty)>0.1; const path=playerSpritePath(moving); const im=img(path); if(im.complete&&im.naturalWidth) ctx.drawImage(im,state.px-im.naturalWidth/2+sx,state.py-im.naturalHeight+sy); else { rect(state.px-11+sx,state.py+7+sy,22,5,'#664f38'); rect(state.px-5+sx,state.py-34+sy,10,10,'#5a3a24'); rect(state.px-6+sx,state.py-25+sy,12,15,'#2f5f9e'); rect(state.px-9+sx,state.py-22+sy,4,12,'#274774'); rect(state.px+5+sx,state.py-22+sy,4,12,'#274774'); rect(state.px-5+sx,state.py-10+sy,4,10,'#1f2430'); rect(state.px+1+sx,state.py-10+sy,4,10,'#1f2430'); } }
 function drawSplash(){ rect(0,0,W,H,'#000'); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='48px monospace'; ctx.fillStyle='#f0f0f0'; ctx.fillText('YAAT',W/2,H/2-18); ctx.font='16px monospace'; ctx.fillStyle='#a0c8ff'; ctx.fillText('Yet Another Adventure Tool',W/2,H/2+30); ctx.textAlign='start'; ctx.textBaseline='top'; }
-function draw(){ tickDialogue(); const now=performance.now(); if(now<state.splashUntil||!state.assetsReady){ drawSplash(); return; } let sx=0,sy=0; if(now<state.shakeUntil){ const m=Math.max(1,Math.round(state.shakeMag*(state.shakeUntil-now)/350)); sx=(Math.random()*m*2-m)|0; sy=(Math.random()*m*2-m)|0; } const r=rooms[state.room]; rect(0,0,W,H,hashColor(r.bg,0xd8c7a3)); drawBmp(r.bg,sx,sy,W,PLAY_H); for(const h of r.hotspots){ rect(h.x+sx,h.y+sy,h.w,h.h,'rgba(240,208,32,.45)'); rect(h.x+1+sx,h.y+1+sy,Math.max(0,h.w-2),Math.max(0,h.h-2),'rgba(192,128,32,.35)'); } for(const o of r.objects){ if(typeof o.visible==='function'&&!o.visible()) continue; drawBmp(typeof o.sprite==='function'?o.sprite():o.sprite,o.x+sx,o.y+sy,o.w,o.h); } if(!r.hidePlayer) drawPlayer(sx,sy); if(!r.hideUI) drawUI(); drawDialogue(); drawCursor(); }
+function draw(){ tickDialogue(); const now=performance.now(); if(now<state.splashUntil||!state.assetsReady){ drawSplash(); return; } let sx=0,sy=0; if(now<state.shakeUntil){ const m=Math.max(1,Math.round(state.shakeMag*(state.shakeUntil-now)/350)); sx=(Math.random()*m*2-m)|0; sy=(Math.random()*m*2-m)|0; } const r=rooms[state.room]; rect(0,0,W,H,hashColor(r.bg,0xd8c7a3)); drawBmp(r.bg,sx,sy,W,PLAY_H); for(const h of r.hotspots){ rect(h.x+sx,h.y+sy,h.w,h.h,'rgba(240,208,32,.45)'); rect(h.x+1+sx,h.y+1+sy,Math.max(0,h.w-2),Math.max(0,h.h-2),'rgba(192,128,32,.35)'); } for(const o of r.objects){ if(!visibleFor(o)) continue; drawBmp(spriteFor(o),o.x+sx,o.y+sy,o.w,o.h); } if(!r.hidePlayer&&state.playerVisible!==false) drawPlayer(sx,sy); if(!r.hideUI) drawUI(); drawDialogue(); drawCursor(); }
 function drawUI(){ rect(0,PLAY_H,W,40,'#101018'); verbs.forEach((v,i)=>{ const x=4+(i%3)*50,y=PLAY_H+3+(i/3|0)*15; rect(x,y,48,13,v===state.verb?'#6a5430':'#303040'); text(v,x+5,y+3); }); state.inv.forEach((id,i)=>{ const x=164+i*23,y=PLAY_H+4; rect(x,y,20,20,id===state.selectedInv?'#806020':'#404048'); rect(x+1,y+1,18,18,'#202028'); drawBmp(inventoryDefs[id].icon,x+2,y+2,16,16); }); const hover=state.cy<PLAY_H&&at(state.cx,state.cy); const command=state.selectedInv?`Use ${inventoryDefs[state.selectedInv].name} with `:(verbLabels[state.verb]||state.verb)+' '; text(state.actionSentence||command+(hover?hover.name:''),164,PLAY_H+28,'#d8d0b8'); }
 function drawDialogue(){ if(!state.dialog) return; rect(16,10,288,20,'rgba(0,0,0,.75)'); text(state.dialog.msg,24,17,'#fff'); }
 function drawCursor(){ const use=(at(state.cx,state.cy)?.cursor==='use')||state.selectedInv||state.verb==='use'; rect(state.cx,state.cy,2,14,'#000'); rect(state.cx+2,state.cy+2,2,10,'#000'); rect(state.cx+4,state.cy+4,2,8,'#000'); rect(state.cx+6,state.cy+6,2,6,'#000'); rect(state.cx+8,state.cy+8,2,4,'#000'); rect(state.cx+1,state.cy+1,1,11,use?'#ffe070':'#fff'); rect(state.cx+2,state.cy+3,2,7,use?'#ffe070':'#fff'); rect(state.cx+4,state.cy+5,2,5,use?'#ffe070':'#fff'); rect(state.cx+6,state.cy+7,2,3,use?'#ffe070':'#fff'); }
@@ -79,30 +76,55 @@ document.addEventListener('pointercancel',e=>{ if(endTouchCursor(e,false)) e.pre
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('./sw.js').then(reg=>reg.update()).catch(()=>{}); }); }
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 function collectImagePaths(){ const paths=['graphics/sprites/player_idle.bmp','graphics/sprites/player_idle_left.bmp','graphics/sprites/player_idle_right.bmp','graphics/sprites/player_walk_left.bmp','graphics/sprites/player_walk_right.bmp']; for(const def of Object.values(inventoryDefs)) paths.push(def.icon); for(const room of Object.values(rooms)){ paths.push(room.bg); for(const o of room.objects){ if(typeof o.sprite==='string') paths.push(o.sprite); } } paths.push('rooms/room002_exit/objects/exit_lamp_lit.bmp'); return paths; }
-const roomActions={
-  newGameLook(){ say('player','This begins a new adventure.'); },
-  newGameUse(){ play('audio/sfx/start_click.wav'); go('room001_intro',160,180); },
-  introEnter(){ say('narrator', state.vars.intro_seen?'You are back in the quiet intro room.':'You stand in a room drawn only by placeholder data.'); state.vars.intro_seen=true; },
-  fadedSignLook(){ say('narrator','The sign reads: use the key on the locked door.'); },
-  doorUnlocked(){ return !state.vars.door_locked; },
-  lockedDoorLook(){ say('player',state.vars.door_locked?'The door is locked. There is a bright brass keyhole.':'The door is unlocked now.'); },
-  lockedDoorUse(){ if(state.selectedInv==='brass_key') return useKeyOnDoor(); if(state.vars.door_locked) say('player','It will not open without the right key.'); else go('room002_exit',160,180); },
-  keyVisible(){ return !state.vars.took_key; },
-  brassKeyLook(){ say('player','A small brass key is lying on the floor.'); },
-  takeKey,
-  backDoorLook(){ say('player','That door leads back to the intro room.'); },
-  endingPlaqueLook(){ say('narrator','The plaque waits for someone to use it.'); },
-  endingPlaqueUse(){ if(state.vars.demo_complete) say('narrator','The demo is already complete.'); else { state.vars.demo_complete=true; play('audio/sfx/demo_complete.wav'); say('narrator','Demo complete. Placeholder assets and metadata are consistent.'); } },
-  exitLampSprite(){ return state.vars.exit_lamp_lit?'rooms/room002_exit/objects/exit_lamp_lit.bmp':'rooms/room002_exit/objects/exit_lamp.bmp'; },
-  exitLampLook(){ say('player',state.vars.exit_lamp_lit?'The lamp is lit with a swapped sprite.':'The lamp is dim. The brass key might bridge its contacts.'); },
-  exitLampUse(){ if(state.selectedInv==='brass_key') return lightLamp(); this.look(); },
-  dimBadgeVisible(){ return !state.vars.exit_lamp_lit; },
-  dimBadgeLook(){ say('narrator','This badge will be hidden when the lamp feature demo runs.'); },
-  litBadgeVisible(){ return state.vars.exit_lamp_lit; },
-  litBadgeLook(){ say('narrator','This badge was shown by the lamp feature demo.'); },
-};
-function attachAction(target, dataKey, runtimeKey){ if(target[dataKey]) target[runtimeKey]=roomActions[target[dataKey]]; }
-function hydrateRooms(){ for(const room of Object.values(rooms)){ if(room.enterAction) room.enter=roomActions[room.enterAction]; else if(room.enterText) room.enter=room.enterText; for(const item of [...room.hotspots, ...room.objects]){ attachAction(item,'lookAction','look'); attachAction(item,'useAction','use'); attachAction(item,'takeAction','take'); attachAction(item,'visibleAction','visible'); attachAction(item,'requiresAction','requires'); attachAction(item,'spriteAction','sprite'); } } }
+
+function truthyVar(name){ return !!state.vars[name]; }
+function runScriptCommands(commands=[], ctx={}){
+  for(const c of commands){
+    switch(c.type){
+      case 'say': say(c.speaker, c.text); break;
+      case 'set': state.vars[c.name]=c.value; break;
+      case 'play_sound': play(c.path); break;
+      case 'goto': go(c.room, c.targetX ?? 160, c.targetY ?? 180); break;
+      case 'hide_player': state.playerVisible=false; break;
+      case 'show_player': state.playerVisible=true; break;
+      case 'hide': objectState(c.id).visible=false; break;
+      case 'show': objectState(c.id).visible=true; break;
+      case 'pickup': objectState(c.object).visible=false; if(!state.inv.includes(c.item)) state.inv.push(c.item); break;
+      case 'consume': state.inv=state.inv.filter(id=>id!==c.item); if(state.selectedInv===c.item) state.selectedInv=''; break;
+      case 'drop': state.inv=state.inv.filter(id=>id!==c.item); objectState(c.object).visible=true; break;
+      case 'shake': shake(c.ms, c.mag); break;
+      case 'set_sprite': objectState(c.id).sprite=c.sprite; break;
+      case 'if': runScriptCommands(truthyVar(c.varName)?c.then:c.else, ctx); break;
+    }
+  }
+}
+function objectState(id){
+  const r=rooms[state.room];
+  const obj=[...r.objects, ...r.hotspots].find(o=>o.id===id) || {};
+  obj.runtime ??= {};
+  return obj.runtime;
+}
+function visibleFor(o){ return o.runtime?.visible ?? o.visible !== false; }
+function spriteFor(o){ return o.runtime?.sprite ?? o.sprite; }
+function runEvent(o, eventName){
+  const ev=o?.events?.find(e=>e.name===eventName && (!e.item || e.item===state.selectedInv))
+        || o?.events?.find(e=>e.name===eventName && !e.item)
+        || o?.events?.find(e=>e.name==='click' && !e.item);
+  if(ev) runScriptCommands(ev.commands,{target:o});
+  return !!ev;
+}
+function hydrateRooms(){
+  for(const room of Object.values(rooms)){
+    room.enter=()=>runScriptCommands(room.events?.find(e=>e.name==='enter')?.commands||[]);
+    for(const item of [...room.hotspots, ...room.objects]){
+      item.look=()=>runEvent(item,'look');
+      item.use=()=>runEvent(item,'use');
+      item.take=()=>runEvent(item,'take');
+      item.click=()=>runEvent(item,'click');
+      if(item.events?.some(e=>e.walkBefore===false)) item.walkBefore=false;
+    }
+  }
+}
 hydrateRooms();
 preloadImages(collectImagePaths()).then(()=>{ state.assetsReady=true; });
 go(firstRoom,160,100); loop();
