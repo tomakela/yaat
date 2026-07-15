@@ -458,6 +458,15 @@ static void yaat_load_room_ini(YaatAssetStore *store, const char *path, YaatRunt
             room->far_y = atoi(yaat_trim(equals));
         } else if (strcmp(section, "scale") == 0 && strcmp(text, "far_scale") == 0) {
             room->far_scale = atof(yaat_trim(equals));
+        } else if (strcmp(section, "entry") == 0 && strcmp(text, "x") == 0) {
+            room->entry_x = atoi(yaat_trim(equals));
+            room->has_entry_x = 1;
+        } else if (strcmp(section, "entry") == 0 && strcmp(text, "y") == 0) {
+            room->entry_y = atoi(yaat_trim(equals));
+            room->has_entry_y = 1;
+        } else if (strcmp(section, "entry") == 0 &&
+                   (strcmp(text, "direction") == 0 || strcmp(text, "facing") == 0)) {
+            yaat_copy_string(room->entry_direction, sizeof(room->entry_direction), yaat_trim(equals));
         } else if (strcmp(section, "display") == 0 && strcmp(text, "walkmask") == 0) {
             yaat_copy_string(room->walkmask, sizeof(room->walkmask), yaat_trim(equals));
         } else if (strcmp(section, "display") == 0 &&
@@ -1154,6 +1163,11 @@ static void yaat_load_room_hotspots(YaatAssetStore *store, const char *path, Yaa
         } else if (strcmp(text, "target_y") == 0) {
             hotspot->target_y = atoi(yaat_trim(equals));
             hotspot->has_target_y = 1;
+        } else if (strcmp(text, "target_direction") == 0 ||
+                   strcmp(text, "direction") == 0 ||
+                   strcmp(text, "facing") == 0 || strcmp(text, "face") == 0) {
+            yaat_copy_string(hotspot->target_direction,
+                             sizeof(hotspot->target_direction), yaat_trim(equals));
         } else if (strcmp(text, "walk_x") == 0 || strcmp(text, "use_x") == 0) {
             hotspot->walk_x = atoi(yaat_trim(equals));
             hotspot->has_walk_x = 1;
@@ -1224,7 +1238,7 @@ static void yaat_load_room_exits(YaatAssetStore *store, const char *path,
             hotspot = yaat_find_or_add_room_hotspot(room, equals);
             continue;
         }
-        if (strcmp(text, "to") == 0) {
+        if (strcmp(text, "to") == 0 || strcmp(text, "target_room") == 0) {
             yaat_copy_string(hotspot->action, sizeof(hotspot->action), "change_room");
             yaat_copy_string(hotspot->target_room, sizeof(hotspot->target_room), equals);
         } else if (strcmp(text, "target_x") == 0) {
@@ -1233,6 +1247,11 @@ static void yaat_load_room_exits(YaatAssetStore *store, const char *path,
         } else if (strcmp(text, "target_y") == 0) {
             hotspot->target_y = atoi(equals);
             hotspot->has_target_y = 1;
+        } else if (strcmp(text, "target_direction") == 0 ||
+                   strcmp(text, "direction") == 0 ||
+                   strcmp(text, "facing") == 0 || strcmp(text, "face") == 0) {
+            yaat_copy_string(hotspot->target_direction,
+                             sizeof(hotspot->target_direction), equals);
         } else if (strcmp(text, "walk_x") == 0 || strcmp(text, "use_x") == 0) {
             hotspot->walk_x = atoi(equals);
             hotspot->has_walk_x = 1;
