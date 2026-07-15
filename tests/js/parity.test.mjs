@@ -268,6 +268,12 @@ test('browser demo keeps exit locked until flag clears and supports ground-item 
   assert.match(mainScript, /if\(state\.inv\.includes\(o\.inventoryItem\)\)\{ state\.verb='use'; state\.selectedInv=o\.inventoryItem; if\(continueChainedInteraction\(\)\) return; \}/);
 });
 
+test('browser demo explicit walk on enabled exit changes room even when standing inside hotspot', async () => {
+  const mainScript = await readFile('src/js/browserGame.js', 'utf8');
+
+  assert.match(mainScript, /if\(verb==='walk'\)\{ if\(canChangeRoom\(o\)\) changeRoomFrom\(o\); else if\(o\.use\) o\.use\.call\(o\); clearActionSentence\(\); return; \}/);
+});
+
 test('JavaScript room entry metadata sets player position and facing', () => {
   const pkg = { vars: [], rooms: [{ id: 'start', label: 'Start', color: 0, events: [], entities: [], entryX: 40, entryY: 150, entryDirection: 'left' }], commands: [], globalEvents: [] };
   const state = new GameState(pkg, { currentRoom: 'start', applyRoomEntry: true });
