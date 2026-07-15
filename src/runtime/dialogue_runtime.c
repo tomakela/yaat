@@ -10,41 +10,12 @@ static char g_active_dialog_node[YAAT_ASSET_MAX_NAME];
 
 static int yaat_dialogue_position_for_speaker(int *dialogue_x, int *dialogue_y)
 {
-    int speaker_x;
-    int speaker_y;
-
     if (!g_dialogue_visible || dialogue_x == 0 || dialogue_y == 0) {
         return 0;
     }
 
-    if (strcmp(g_dialogue_speaker, "player") == 0) {
-        if (!g_player_visible) {
-            return 0;
-        }
-        speaker_x = g_player_x;
-        speaker_y = g_player_y - YAAT_PLAYER_HEIGHT;
-    } else {
-        YaatRuntimeObject *object;
-        YaatEntity *entity;
-
-        object = yaat_runtime_object_by_id(g_dialogue_speaker);
-        if (object != 0 && object->visible) {
-            speaker_x = object->x + (object->width / 2);
-            speaker_y = object->y;
-        } else if (!g_runtime_load.ok && g_current_room >= 0 && g_current_room < g_room_count) {
-            entity = yaat_entity_by_id(&g_rooms[g_current_room], g_dialogue_speaker);
-            if (entity == 0 || !entity->visible) {
-                return 0;
-            }
-            speaker_x = entity->x + (entity->w / 2);
-            speaker_y = entity->y;
-        } else {
-            return 0;
-        }
-    }
-
-    *dialogue_x = yaat_clamp_int(speaker_x - 60, 0, YAAT_BACKBUFFER_WIDTH - 120);
-    *dialogue_y = yaat_clamp_int(speaker_y - 16, 0, YAAT_PLAYFIELD_HEIGHT - 16);
+    *dialogue_x = 24;
+    *dialogue_y = 17;
     return 1;
 }
 
