@@ -3137,7 +3137,6 @@ static void yaat_click_inventory_item(const char *item)
             event = yaat_find_event(entity->events, entity->event_count, "click", 0);
         }
     }
-    if (entity == 0) return;
     if (event != 0) {
         yaat_execute_event(event);
     } else if (strcmp(verb, "look") == 0 && (runtime_item = yaat_find_runtime_inventory_item(item)) != 0 && runtime_item->description[0] != '\0') {
@@ -3486,6 +3485,20 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
 
     if (g_player_visible && strcmp(yaat_active_verb(), "walk") == 0) {
         if (g_runtime_load.ok) {
+            if (hotspot != 0 && hotspot->script_event[0] != '\0') {
+                walk_target_x = backbuffer_x;
+                walk_target_y = yaat_clamp_int(backbuffer_y,
+                                               YAAT_PLAYER_HEIGHT,
+                                               YAAT_PLAYFIELD_HEIGHT - 1);
+                if (yaat_find_walk_target_for_hotspot(hotspot, &walk_target_x,
+                                                      &walk_target_y)) {
+                    yaat_pending_interaction_set(backbuffer_x, backbuffer_y);
+                    yaat_pending_room_change_clear();
+                    yaat_set_player_target(walk_target_x, walk_target_y);
+                    yaat_pending_interaction_maybe_complete();
+                    return;
+                }
+            }
             for (i = g_runtime_load.room.object_count - 1; i >= 0; --i) {
                 YaatRuntimeObject *object = &g_runtime_load.room.objects[i];
                 if (object->visible && backbuffer_x >= object->x &&

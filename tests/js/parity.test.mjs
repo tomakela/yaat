@@ -270,6 +270,16 @@ test('browser demo keeps exit locked until flag clears and supports ground-item 
   assert.match(mainScript, /state\.chained=o/);
   assert.match(mainScript, /if\(!\(o\.click&&o\.click\.call\(o\)\)\)\{ if\(o\.take\) o\.take\.call\(o\); else cant\(verb\); \}/);
   assert.match(mainScript, /if\(state\.inv\.includes\(o\.inventoryItem\)\)\{ state\.verb='use'; state\.selectedInv=o\.inventoryItem; if\(continueChainedInteraction\(\)\) return; \}/);
+  assert.match(mainScript, /if\(!state\.pending\)\{ const exit=playerExit\(\); if\(exit\)\{ changeRoomFrom\(exit\); return; \} \}/);
+});
+
+
+test('browser demo routes inventory clicks through selected verbs', async () => {
+  const mainScript = await readFile('src/js/browserGame.js', 'utf8');
+
+  assert.match(mainScript, /if\(state\.verb==='look'\)\{ setActionSentence\(`Look at \$\{def\?\.name\|\|id\}`/);
+  assert.match(mainScript, /else if\(state\.verb==='use'\)\{ state\.selectedInv=id; \}/);
+  assert.match(mainScript, /else \{ setActionSentence\(`\$\{verbLabels\[state\.verb\]\|\|state\.verb\} \$\{def\?\.name\|\|id\}`/);
 });
 
 test('browser demo explicit walk on enabled exit changes room even when standing inside hotspot', async () => {
