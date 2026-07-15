@@ -3157,6 +3157,11 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
         yaat_click_game(backbuffer_x, backbuffer_y, 1);
         return;
     }
+    if (!g_player_visible && g_runtime_load.ok &&
+        yaat_runtime_object_at(backbuffer_x, backbuffer_y) != 0) {
+        yaat_click_game(backbuffer_x, backbuffer_y, immediate_room_change);
+        return;
+    }
     if (yaat_runtime_hotspot_change_room_enabled(hotspot)) {
         walk_target_x = backbuffer_x;
         walk_target_y = yaat_clamp_int(backbuffer_y, YAAT_PLAYER_HEIGHT,
