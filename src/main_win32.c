@@ -2017,6 +2017,9 @@ static void yaat_load_inventory_scripts(void)
     for (i = 0; i < g_runtime_load.inventory.item_count; ++i) {
         YaatRuntimeInventoryItem *item = &g_runtime_load.inventory.items[i];
         if (item->script[0] != '\0') yaat_load_script_file(item->script);
+    }
+}
+
 static int yaat_script_path_already_loaded(char paths[][YAAT_ASSET_MAX_PATH], int count, const char *path)
 {
     int i;
@@ -2912,6 +2915,7 @@ static void yaat_click_inventory_item(const char *item)
         if (event == 0 && strcmp(verb, "click") != 0) {
             event = yaat_find_event(entity->events, entity->event_count, "click", 0);
         }
+    }
     entity = yaat_entity_by_id_any_room(item);
     if (strcmp(g_selected_verb, "use") == 0) {
         if (g_selected_inventory[0] != '\0' && strcmp(g_selected_inventory, item) != 0 && entity != 0) {
@@ -3548,6 +3552,8 @@ static LRESULT CALLBACK yaat_window_proc(HWND window, UINT message, WPARAM w_par
         if (w_param == VK_F9) {
             yaat_open_save_menu(YAAT_SAVE_MENU_LOAD);
             InvalidateRect(window, 0, FALSE);
+            return 0;
+        }
         if (w_param == 'M') {
             yaat_winmm_audio_toggle_muted(&g_audio);
             return 0;
