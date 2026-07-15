@@ -105,6 +105,11 @@ static char g_suppressed_room_change_hotspot_id[YAAT_ASSET_MAX_NAME];
 static int g_pending_interaction;
 static int g_pending_interaction_x;
 static int g_pending_interaction_y;
+static int g_chained_interaction;
+static int g_chained_interaction_x;
+static int g_chained_interaction_y;
+static char g_chained_interaction_item_name[YAAT_TEXT_MAX];
+static char g_chained_interaction_target_name[YAAT_TEXT_MAX];
 static int g_player_visible = 1;
 static int g_cutscene_overlay_visible;
 static char g_cutscene_overlay_text[YAAT_TEXT_MAX];
@@ -189,6 +194,7 @@ static void yaat_open_save_menu(YaatSaveMenuMode mode);
 static const char *yaat_active_verb(void);
 static void yaat_update_command_feedback(void);
 static void yaat_update_hover_target_at(int backbuffer_x, int backbuffer_y);
+static int yaat_begin_runtime_interaction_walk(int backbuffer_x, int backbuffer_y);
 static const char *yaat_player_walk_animation_for_delta(int dx, int dy);
 static const char *yaat_player_idle_animation(void);
 static void yaat_player_face_direction(const char *direction);
@@ -1501,6 +1507,30 @@ static void yaat_pending_interaction_clear(void)
     g_pending_interaction = 0;
     g_pending_interaction_x = 0;
     g_pending_interaction_y = 0;
+}
+
+static void yaat_chained_interaction_clear(void)
+{
+    g_chained_interaction = 0;
+    g_chained_interaction_x = 0;
+    g_chained_interaction_y = 0;
+    g_chained_interaction_item_name[0] = '\0';
+    g_chained_interaction_target_name[0] = '\0';
+}
+
+static void yaat_chained_interaction_set(int x, int y, const char *item_name,
+                                         const char *target_name)
+{
+    g_chained_interaction = 1;
+    g_chained_interaction_x = x;
+    g_chained_interaction_y = y;
+    yaat_copy(g_chained_interaction_item_name, sizeof(g_chained_interaction_item_name),
+              item_name != 0 ? item_name : "", strlen(item_name != 0 ? item_name : ""));
+    yaat_copy(g_chained_interaction_target_name, sizeof(g_chained_interaction_target_name),
+              target_name != 0 ? target_name : "", strlen(target_name != 0 ? target_name : ""));
+    sprintf(g_command_feedback, "Use %s with %s",
+            g_chained_interaction_item_name, g_chained_interaction_target_name);
+    g_command_feedback[sizeof(g_command_feedback) - 1] = '\0';
 }
 
 static void yaat_pending_room_change_set(const YaatRuntimeHotspot *hotspot)
@@ -2860,6 +2890,8 @@ static void yaat_pending_interaction_maybe_complete(void)
 {
     int click_x;
     int click_y;
+    int chained_x;
+    int chained_y;
 
     if (!g_pending_interaction) return;
     if (!yaat_player_motion_complete()) return;
@@ -2868,6 +2900,12 @@ static void yaat_pending_interaction_maybe_complete(void)
     click_y = g_pending_interaction_y;
     yaat_pending_interaction_clear();
     yaat_click_game(click_x, click_y, 0);
+    if (g_chained_interaction && g_selected_inventory[0] != '\0') {
+        chained_x = g_chained_interaction_x;
+        chained_y = g_chained_interaction_y;
+        yaat_chained_interaction_clear();
+        yaat_begin_runtime_interaction_walk(chained_x, chained_y);
+    }
 }
 
 
@@ -3237,6 +3275,58 @@ static int yaat_client_to_backbuffer(HWND window, int client_x, int client_y,
     return 1;
 }
 
+static int yaat_begin_runtime_interaction_walk(int backbuffer_x, int backbuffer_y)
+{
+    int walk_target_x;
+    int walk_target_y;
+    int i;
+    int script_room_index;
+    YaatRoom *script_room;
+    YaatRuntimeHotspot *hotspot;
+    YaatRuntimeObject *object;
+    YaatEntity *entity;
+
+    if (!g_runtime_load.ok) return 0;
+    script_room_index = yaat_runtime_room_script_index();
+    script_room = (script_room_index >= 0 && script_room_index < g_room_count) ?
+                  &g_rooms[script_room_index] : 0;
+    for (i = g_runtime_load.room.object_count - 1; i >= 0; --i) {
+        object = &g_runtime_load.room.objects[i];
+        if (object->visible && backbuffer_x >= object->x &&
+            backbuffer_y >= object->y &&
+            backbuffer_x < object->x + object->width &&
+            backbuffer_y < object->y + object->height) {
+            entity = script_room != 0 ? yaat_entity_by_id(script_room, object->id) : 0;
+            if (!yaat_should_walk_before_entity_event(entity)) return 1;
+            walk_target_x = backbuffer_x;
+            walk_target_y = yaat_clamp_int(backbuffer_y, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
+            if (yaat_find_walk_target_for_object(object, &walk_target_x, &walk_target_y)) {
+                yaat_pending_interaction_set(backbuffer_x, backbuffer_y);
+                yaat_pending_room_change_clear();
+                yaat_set_player_target(walk_target_x, walk_target_y);
+                yaat_pending_interaction_maybe_complete();
+                return 1;
+            }
+            return 0;
+        }
+    }
+    hotspot = yaat_runtime_hotspot_at(backbuffer_x, backbuffer_y);
+    if (hotspot != 0) {
+        entity = script_room != 0 ? yaat_entity_by_id(script_room, hotspot->id) : 0;
+        if (!yaat_should_walk_before_entity_event(entity)) return 1;
+        walk_target_x = backbuffer_x;
+        walk_target_y = yaat_clamp_int(backbuffer_y, YAAT_PLAYER_HEIGHT, YAAT_PLAYFIELD_HEIGHT - 1);
+        if (yaat_find_walk_target_for_hotspot(hotspot, &walk_target_x, &walk_target_y)) {
+            yaat_pending_interaction_set(backbuffer_x, backbuffer_y);
+            yaat_pending_room_change_clear();
+            yaat_set_player_target(walk_target_x, walk_target_y);
+            yaat_pending_interaction_maybe_complete();
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
                                         int immediate_room_change)
 {
@@ -3249,6 +3339,9 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
     int verb_index;
     int inventory_index;
     YaatRuntimeHotspot *hotspot;
+    YaatRuntimeObject *pending_object;
+    YaatRuntimeObject *target_object;
+    const char *target_name;
 
     if (!yaat_client_to_backbuffer(window, client_x, client_y,
                                    &backbuffer_x, &backbuffer_y)) return;
@@ -3257,6 +3350,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
     verb_index = yaat_verb_button_at(backbuffer_x, backbuffer_y);
     if (verb_index >= 0) {
         yaat_pending_interaction_clear();
+        yaat_chained_interaction_clear();
         yaat_pending_room_change_clear();
         if (strcmp(g_selected_verb, g_verbs[verb_index]) == 0) {
             yaat_deselect_action();
@@ -3276,6 +3370,24 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
         return;
     }
     hotspot = g_runtime_load.ok ? yaat_runtime_hotspot_at(backbuffer_x, backbuffer_y) : 0;
+    if (g_pending_interaction && strcmp(yaat_active_verb(), "use") == 0 &&
+        g_selected_inventory[0] == '\0' && g_runtime_load.ok) {
+        pending_object = yaat_runtime_object_at(g_pending_interaction_x,
+                                                g_pending_interaction_y);
+        if (pending_object != 0 && pending_object->inventory_item[0] != '\0' &&
+            (backbuffer_x != g_pending_interaction_x || backbuffer_y != g_pending_interaction_y)) {
+            target_object = yaat_runtime_object_at(backbuffer_x, backbuffer_y);
+            target_name = "";
+            if (target_object != 0) target_name = target_object->name[0] != '\0' ? target_object->name : target_object->id;
+            else if (hotspot != 0) target_name = hotspot->name[0] != '\0' ? hotspot->name : hotspot->id;
+            if (target_name[0] != '\0') {
+                yaat_chained_interaction_set(backbuffer_x, backbuffer_y,
+                                             yaat_runtime_inventory_item_display_name(pending_object->inventory_item),
+                                             target_name);
+                return;
+            }
+        }
+    }
     if (immediate_room_change && yaat_runtime_hotspot_change_room_enabled(hotspot)) {
         yaat_click_game(backbuffer_x, backbuffer_y, 1);
         return;
@@ -3516,6 +3628,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
        before starting the background walk or deselecting the active verb. */
     yaat_set_hover_target(YAAT_HOVER_EMPTY, "", "");
     yaat_pending_interaction_clear();
+    yaat_chained_interaction_clear();
     yaat_pending_room_change_clear();
     if (g_selected_verb[0] != '\0') {
         yaat_deselect_action();
