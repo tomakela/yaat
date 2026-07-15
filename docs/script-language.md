@@ -325,9 +325,10 @@ on <event> nowalk {
 }
 ```
 
-`walk` is the default for room object and hotspot verb handlers. Use `nowalk`
-(`no_walk` or `immediate` are accepted aliases) for handlers that should fire
-in place, such as reading a far-away sign or saying a quick rejection line.
+`walk` is the default for room object and hotspot verb handlers, except
+`look`, which defaults to `nowalk` so examining an object does not move the
+player. Use `nowalk` (`no_walk` or `immediate` are accepted aliases) for other
+handlers that should fire in place, such as saying a quick rejection line.
 
 Supported version 0 events:
 
@@ -388,7 +389,7 @@ Runtime dispatch uses this order:
 5. If the click is on a room object or hotspot, the runtime first looks for `on <selected-verb>`. Missing verb handlers immediately use the default "I can't..." feedback instead of walking to the target. A right-click is treated as `on longclick`, falling back to `on look` by default.
 6. If `use` has a selected inventory item, the runtime first looks for `on use <item>` before trying plain `on use`.
 7. If the selected verb handler exists and is marked `walk` or has no walk modifier, the player walks to the target and then dispatches it.
-8. If the selected verb handler exists and is marked `nowalk`, the runtime dispatches it immediately without changing the walk target.
+8. If the selected verb handler exists and is marked `nowalk` (or is a default `look` handler), the runtime dispatches it immediately without changing the walk target.
 
 ### Inventory item scripts and combinations
 

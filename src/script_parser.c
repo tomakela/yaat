@@ -100,9 +100,9 @@ static void yaat_parse_event(YaatScriptPackage *package, YaatScriptCursor *curso
     if (*event_count >= YAAT_MAX_EVENTS) return;
     event = &events[(*event_count)++];
     memset(event, 0, sizeof(*event));
-    event->walk_before = 1;
     token = yaat_advance_token(cursor);
     parser_copy(event->name, sizeof(event->name), token->lexeme, token->length);
+    event->walk_before = yaat_token_is(token, "look") ? 0 : 1;
     if (yaat_peek(cursor)->type == SCRIPT_TOKEN_IDENTIFIER && !yaat_token_is(yaat_peek(cursor), "on")) {
         if (yaat_token_is(yaat_peek(cursor), "nowalk") ||
             yaat_token_is(yaat_peek(cursor), "no_walk") ||

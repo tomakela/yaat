@@ -20,6 +20,10 @@ test('JavaScript bytecode loader matches C data model dump', async () => {
   assert.equal(js.commands.length, c.commands.length);
   assert.deepEqual(js.rooms.map(r=>r.id), c.rooms.map(r=>r.id));
   assert.deepEqual(js.vars.map(v=>v.name), c.vars.map(v=>v.name));
+  const lookEvent = js.rooms.flatMap(r => r.entities).flatMap(e => e.events).find(e => e.name === 'look');
+  const takeEvent = js.rooms.flatMap(r => r.entities).flatMap(e => e.events).find(e => e.name === 'click');
+  assert.equal(lookEvent?.walkBefore, false);
+  assert.equal(takeEvent?.walkBefore, true);
 });
 test('JavaScript VM executes fixture event traces deterministically', async () => {
   ensureFixture();
