@@ -1,4 +1,5 @@
 const GAME_ROOT = 'game/';
+const PLAY_H = 200;
 
 async function fetchText(path) {
   const response = await fetch(GAME_ROOT + path);
@@ -37,6 +38,11 @@ function colorValue(value) {
 
 function intValue(value, fallback = 0) {
   const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function numberValue(value, fallback = 0) {
+  const parsed = Number.parseFloat(value ?? '');
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
@@ -186,6 +192,12 @@ async function loadRoom(roomId) {
     bg: roomPath(roomId, roomIni.display?.background ?? 'background.bmp'),
     hidePlayer: roomId === 'room000_start',
     hideUI: roomId === 'room000_start',
+    scale: {
+      nearY: intValue(roomIni.scale?.near_y, PLAY_H - 1),
+      nearScale: numberValue(roomIni.scale?.near_scale, 1),
+      farY: intValue(roomIni.scale?.far_y, 0),
+      farScale: numberValue(roomIni.scale?.far_scale, 1),
+    },
     hotspots: Object.entries(hotspotsIni).filter(([, v]) => typeof v === 'object').map(([id, data]) => hotspotFromIni(id, data)),
     objects: Object.entries(objectsIni).filter(([, v]) => typeof v === 'object').map(([id, data]) => objectFromIni(roomId, id, data)),
   };

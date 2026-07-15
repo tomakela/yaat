@@ -197,11 +197,14 @@ test('browser demo starts from INI metadata and keeps game folder JavaScript-fre
   assert.match(dataLoader, /parseYaatRoom/);
   assert.match(dataLoader, /transparentColor: colorValue/);
   assert.match(dataLoader, /playerTransparentColor: colorValue/);
+  assert.match(dataLoader, /nearScale: numberValue\(roomIni\.scale\?\.near_scale, 1\)/);
   assert.match(mainScript, /const \{verbs, verbLabels, inventoryDefs, rooms, firstRoom, initialVars, playerTransparentColor\}=await loadGameData\(\);/);
   assert.match(mainScript, /go\(firstRoom,160,100\); loop\(\);/);
   assert.match(mainScript, /if\(rooms\[state\.room\]\.hideUI\) return;/);
   assert.match(mainScript, /transparentImg\(path,transparentColor\)/);
   assert.match(mainScript, /transparentImg\(path,playerTransparentColor\)/);
+  assert.match(mainScript, /roomScaleForY\(rooms\[state\.room\],state\.py\)/);
+  assert.match(mainScript, /ctx\.drawImage\(transparentImg\(path,playerTransparentColor\),state\.px-w\/2\+sx,state\.py-h\+sy,w,h\)/);
 });
 
 test('JavaScript state hides player-owned UI with hide_player', () => {
