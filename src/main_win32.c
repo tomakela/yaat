@@ -2368,11 +2368,40 @@ static int yaat_save_menu_slot_at(int x, int y)
     return -1;
 }
 
+typedef struct YaatSaveMenuUiString {
+    const char *key;
+    const char *fallback;
+} YaatSaveMenuUiString;
+
+static const char *YAAT_SAVE_MENU_SLOT_KEY_FORMAT = "ui.save.slot%d";
+static const YaatSaveMenuUiString YAAT_SAVE_MENU_TITLE = { "ui.save.title", "Save Game" };
+static const YaatSaveMenuUiString YAAT_LOAD_MENU_TITLE = { "ui.load.title", "Load Game" };
+static const YaatSaveMenuUiString YAAT_SAVE_MENU_EMPTY = { "ui.save.empty", "Empty" };
+static const YaatSaveMenuUiString YAAT_SAVE_MENU_CANCEL = { "ui.save.cancel", "Esc: Cancel" };
+static const YaatSaveMenuUiString YAAT_SAVE_MENU_PROMPT = { "ui.save.prompt", "Enter/click: Save or overwrite" };
+static const YaatSaveMenuUiString YAAT_LOAD_MENU_PROMPT = { "ui.load.prompt", "Enter/click: Load" };
+
+static const YaatSaveMenuUiString *yaat_save_menu_title_string(void)
+{
+    return g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? &YAAT_SAVE_MENU_TITLE : &YAAT_LOAD_MENU_TITLE;
+}
+
+static const YaatSaveMenuUiString *yaat_save_menu_prompt_string(void)
+{
+    return g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? &YAAT_SAVE_MENU_PROMPT : &YAAT_LOAD_MENU_PROMPT;
+}
+
+static void yaat_get_save_menu_ui_string(const YaatSaveMenuUiString *ui_string,
+                                         char *out, size_t out_size)
+{
+    yaat_get_ui_string(ui_string->key, ui_string->fallback, out, out_size);
+}
+
 static void yaat_save_slot_label_for_menu(int slot, char *label, size_t label_size)
 {
     char key[32];
     char fallback[32];
-    sprintf(key, "ui.save.slot%d", slot + 1);
+    sprintf(key, YAAT_SAVE_MENU_SLOT_KEY_FORMAT, slot + 1);
     yaat_default_save_slot_label(slot, fallback, sizeof(fallback));
     yaat_get_ui_string(key, fallback, label, label_size);
 }
@@ -2414,11 +2443,9 @@ static void yaat_draw_save_menu(void)
     char empty[32];
     char cancel[32];
 
-    yaat_get_ui_string(g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? "ui.save.title" : "ui.load.title",
-                       g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? "Save Game" : "Load Game",
-                       title, sizeof(title));
-    yaat_get_ui_string("ui.save.empty", "Empty", empty, sizeof(empty));
-    yaat_get_ui_string("ui.save.cancel", "Esc: Cancel", cancel, sizeof(cancel));
+    yaat_get_save_menu_ui_string(yaat_save_menu_title_string(), title, sizeof(title));
+    yaat_get_save_menu_ui_string(&YAAT_SAVE_MENU_EMPTY, empty, sizeof(empty));
+    yaat_get_save_menu_ui_string(&YAAT_SAVE_MENU_CANCEL, cancel, sizeof(cancel));
 
     yaat_draw_rect(&g_renderer, 28, 38, 264, 164, 0x00000000UL);
     yaat_draw_rect(&g_renderer, 30, 40, 260, 160, 0x00202030UL);
@@ -2446,9 +2473,7 @@ static void yaat_draw_save_menu(void)
         }
     }
 
-    yaat_get_ui_string(g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? "ui.save.prompt" : "ui.load.prompt",
-                       g_save_menu_mode == YAAT_SAVE_MENU_SAVE ? "Enter/click: Save or overwrite" : "Enter/click: Load",
-                       prompt, sizeof(prompt));
+    yaat_get_save_menu_ui_string(yaat_save_menu_prompt_string(), prompt, sizeof(prompt));
     yaat_draw_text_block(44, 178, prompt, 0x00ffd060UL);
     yaat_draw_text_block(190, 178, cancel, 0x00ffd060UL);
 }
