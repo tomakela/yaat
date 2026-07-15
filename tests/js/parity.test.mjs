@@ -183,13 +183,20 @@ test('JavaScript VM covers demo refresh visibility, sprite, drop, and consume co
 });
 
 
-test('browser demo start room keeps player and verb UI hidden', async () => {
-  const html = await readFile('index.html', 'utf8');
-  const startRoomDefs = html.match(/room000_start:\{/g) ?? [];
+test('browser demo starts from INI metadata and keeps index as the script entrypoint', async () => {
+  const [html, gameIni, dataLoader, mainScript] = await Promise.all([
+    readFile('index.html', 'utf8'),
+    readFile('game/game.ini', 'utf8'),
+    readFile('game/scripts/engine/data.js', 'utf8'),
+    readFile('game/scripts/main.js', 'utf8'),
+  ]);
 
-  assert.equal(startRoomDefs.length, 1);
-  assert.match(html, /room000_start:\{[^}]*hidePlayer:true,hideUI:true/);
-  assert.match(html, /if\(rooms\[state\.room\]\.hideUI\) return;/);
+  assert.match(html, /<script type="module" src="game\/scripts\/main\.js"><\/script>/);
+  assert.match(gameIni, /^first_room=room000_start$/m);
+  assert.match(dataLoader, /fetchText\('game\.ini'\)/);
+  assert.match(mainScript, /const \{verbs, verbLabels, inventoryDefs, rooms, firstRoom\}=await loadGameData\(\);/);
+  assert.match(mainScript, /go\(firstRoom,160,100\); loop\(\);/);
+  assert.match(mainScript, /if\(rooms\[state\.room\]\.hideUI\) return;/);
 });
 
 test('JavaScript state hides player-owned UI with hide_player', () => {
