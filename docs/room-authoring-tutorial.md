@@ -213,9 +213,12 @@ target_room=room001_intro
 rect=0,84,20,96
 walk_x=24
 walk_y=158
+target_x=28
+target_y=158
+target_direction=right
 ```
 
-In the example below, `hall_exit` also has script handlers so it can play dialogue or sound before leaving.
+Use `target_x` and `target_y` to place the player after the destination room loads, and `target_direction` (also accepted as `direction`, `facing`, or `face`) to choose the idle pose to show on arrival. Valid directions are `left`, `right`, `up`, and `down` (with `west`, `east`, `north`, and `south` aliases). In the example below, `hall_exit` also has script handlers so it can play dialogue or sound before leaving.
 
 ## 7. Write the complete room script
 

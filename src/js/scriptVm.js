@@ -28,7 +28,7 @@ export class ScriptVm {
   exec(c,effects){ const s=this.state; switch(c.kind){
     case K.SAY: effects.push({type:'say', speaker:c.a, text:c.b, stringId:c.stringId}); break;
     case K.SET: s.setVar(c.a,c.value); effects.push({type:'set', name:c.a, value:c.value}); break;
-    case K.GOTO: s.currentRoom=c.a; effects.push({type:'goto', room:c.a}); break;
+    case K.GOTO: s.enterRoom(c.a); effects.push({type:'goto', room:c.a}); break;
     case K.PLAY_SOUND: effects.push({type:'playSound', path:c.a}); break;
     case K.TAKE: s.addItem(c.a); effects.push({type:'take', item:c.a}); break;
     case K.HIDE: s.object(c.a).visible=false; effects.push({type:'hide', object:c.a}); break;
