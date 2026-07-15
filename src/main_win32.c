@@ -2352,7 +2352,10 @@ static void yaat_draw_script_scene(void)
         yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_speaker, 0x00ffd060UL);
         yaat_draw_text_block(70, YAAT_PLAYFIELD_HEIGHT + 6, g_dialogue_text, 0x00f0f0f0UL);
     } else {
-        yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 12, "Click hotspots to play the demo", 0x00808080UL);
+        char idle_prompt[64];
+        yaat_get_ui_string("ui.hud.idle_prompt", "Click hotspots to play the demo",
+                           idle_prompt, sizeof(idle_prompt));
+        yaat_draw_text_block(8, YAAT_PLAYFIELD_HEIGHT + 12, idle_prompt, 0x00808080UL);
     }
 }
 
