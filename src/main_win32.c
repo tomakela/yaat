@@ -3092,6 +3092,10 @@ static int yaat_should_walk_before_entity_event(YaatEntity *entity)
         yaat_deselect_action();
         return 0;
     }
+    if (strcmp(yaat_active_verb(), "look") == 0) {
+        yaat_execute_entity_verb(entity, "look", 0, 0);
+        return 0;
+    }
     if (!event->walk_before) {
         yaat_execute_entity_verb(entity, yaat_active_verb(),
                                  strcmp(yaat_active_verb(), "use") == 0 ?

@@ -99,7 +99,7 @@ function parseCommands(body){
 }
 function parseEvents(block){
   const events=[]; const re=/on\s+(\w+)(?:\s+(\w+))?(?:\s+(nowalk))?\s*\{/g; let m;
-  while((m=re.exec(block))){ const open=block.indexOf('{', m.index); const close=findMatching(block, open); events.push({name:m[1], item:m[2]&&m[2]!=='nowalk'?m[2]:'', walkBefore:!(m[2]==='nowalk'||m[3]==='nowalk'), commands:parseCommands(block.slice(open+1, close))}); re.lastIndex=close+1; }
+  while((m=re.exec(block))){ const open=block.indexOf('{', m.index); const close=findMatching(block, open); const noWalk=m[1]==='look'||m[2]==='nowalk'||m[3]==='nowalk'; events.push({name:m[1], item:m[2]&&m[2]!=='nowalk'?m[2]:'', walkBefore:!noWalk, commands:parseCommands(block.slice(open+1, close))}); re.lastIndex=close+1; }
   return events;
 }
 function parseYaatRoom(text){
