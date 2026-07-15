@@ -4,14 +4,19 @@ import { readFile } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { AssetStore, MapAssetLayer, COMMAND_KIND, CONDITION_OP, VALUE_KIND, decodeYaatBytecode, GameState, ScriptVm } from '../../src/js/index.js';
-function ensureFixture(){ mkdirSync('build',{recursive:true}); execFileSync('make',['fixtures'],{stdio:'pipe'}); }
+
+const MAKE = process.env.MAKE ?? 'make';
+const CC = process.env.CC ?? 'cc';
+const C_DATA_MODEL_DUMP = process.env.C_DATA_MODEL_DUMP ?? './build/c_data_model_dump';
+
+function ensureFixture(){ mkdirSync('build',{recursive:true}); execFileSync(MAKE,['fixtures'],{stdio:'pipe'}); }
 
 test('JavaScript bytecode loader matches C data model dump', async () => {
   ensureFixture();
   const path='tests/fixtures/bytecode/two_room_key_puzzle.yaatbc';
   const js=decodeYaatBytecode(await readFile(path));
-  execFileSync('cc',['-std=c89','-Isrc','-o','build/c_data_model_dump','tests/js/c_data_model_dump.c','src/script_bytecode.c','src/script_package.c']);
-  const c=JSON.parse(execFileSync('./build/c_data_model_dump',[path],{encoding:'utf8'}));
+  execFileSync(CC,['-std=c89','-Isrc','-o',C_DATA_MODEL_DUMP,'tests/js/c_data_model_dump.c','src/script_bytecode.c','src/script_package.c']);
+  const c=JSON.parse(execFileSync(C_DATA_MODEL_DUMP,[path],{encoding:'utf8'}));
   assert.equal(js.commands.length, c.commands.length);
   assert.deepEqual(js.rooms.map(r=>r.id), c.rooms.map(r=>r.id));
   assert.deepEqual(js.vars.map(v=>v.name), c.vars.map(v=>v.name));
