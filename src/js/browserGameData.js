@@ -29,6 +29,12 @@ function boolValue(value, fallback = false) {
   return /^(1|true|yes|on)$/i.test(value);
 }
 
+function colorValue(value) {
+  if (!value) return '';
+  const match = value.trim().match(/^#?([0-9a-f]{6})$/i);
+  return match ? `#${match[1].toLowerCase()}` : '';
+}
+
 function intValue(value, fallback = 0) {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -134,6 +140,7 @@ function objectFromIni(roomId, id, data) {
     cursor: data.cursor,
     inventoryItem: data.inventory_item,
     visible: boolValue(data.visible, true),
+    transparentColor: colorValue(data.transparent_color ?? data.color_key),
   };
   return object;
 }
@@ -190,6 +197,7 @@ async function loadRoom(roomId) {
 
 export async function loadGameData() {
   const gameIni = parseIni(await fetchText('game.ini'));
+  const playerIni = await fetchText('graphics/sprites/player.ini').then(parseIni).catch(() => ({}));
   const roomRoot = gameIni.paths?.rooms ?? 'rooms';
   const [actionsIni, inventoryIni] = await Promise.all([
     fetchText('actions.ini').then(parseIni),
@@ -199,6 +207,7 @@ export async function loadGameData() {
   const loadedRooms = await Promise.all(roomIds.map(roomId => loadRoom(joinPath(roomRoot, roomId).replace(/^rooms\//, ''))));
   return {
     initialVars: Object.assign({}, ...loadedRooms.map(room => room.vars || {})),
+    playerTransparentColor: colorValue(playerIni.sprites?.transparent_color ?? playerIni.sprites?.color_key),
     ...loadVerbs(actionsIni),
     inventoryDefs: loadInventory(inventoryIni),
     rooms: Object.fromEntries(roomIds.map((roomId, index) => [roomId, loadedRooms[index]])),
