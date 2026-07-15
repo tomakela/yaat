@@ -1993,26 +1993,163 @@ static void yaat_load_script_package(const char *bytecode_path, const char *sour
     }
 }
 
-static void yaat_load_script_file(const char *path)
+static void yaat_script_source_path(char *dst, size_t dst_size, const char *asset_path)
 {
-    YaatScriptPackage package;
-    yaat_script_package_init(&package);
-    if (yaat_parse_script_file_into(&package, path)) {
-        yaat_import_package(&package);
+    if (asset_path == 0 || asset_path[0] == '\0') {
+        if (dst_size > 0) dst[0] = '\0';
+    } else if (strncmp(asset_path, "game/", 5) == 0 || strncmp(asset_path, "game\\", 5) == 0) {
+        yaat_copy(dst, dst_size, asset_path, strlen(asset_path));
+    } else {
+        yaat_runtime_join_path(dst, dst_size, "game", asset_path);
     }
 }
 
-static void yaat_load_inventory_scripts(void)
+static void yaat_script_bytecode_path(char *dst, size_t dst_size, const char *source_path)
+{
+    char *dot;
+    yaat_copy(dst, dst_size, source_path, strlen(source_path));
+    dot = strrchr(dst, '.');
+    if (dot != 0 && strcmp(dot, ".yaat") == 0) {
+        yaat_copy(dot, dst_size - (size_t)(dot - dst), ".yaatbc", strlen(".yaatbc"));
+    } else if (strlen(dst) + strlen(".bc") < dst_size) {
+        strcat(dst, ".bc");
+    }
+}
+
+static int yaat_script_path_already_loaded(char paths[][YAAT_ASSET_MAX_PATH], int count, const char *path);
+
+static void yaat_load_script_asset_once(char paths[][YAAT_ASSET_MAX_PATH], int *count,
+                                        int max_count, const char *asset_path)
+{
+    char source_path[YAAT_ASSET_MAX_PATH];
+    char bytecode_path[YAAT_ASSET_MAX_PATH];
+
+    yaat_script_source_path(source_path, sizeof(source_path), asset_path);
+    if (source_path[0] == '\0' ||
+        yaat_script_path_already_loaded(paths, *count, source_path)) {
+        return;
+    }
+    yaat_script_bytecode_path(bytecode_path, sizeof(bytecode_path), source_path);
+    yaat_load_script_package(bytecode_path, source_path);
+    if (*count < max_count) {
+        yaat_copy(paths[*count], sizeof(paths[*count]), source_path, strlen(source_path));
+        ++*count;
+    }
+}
+
+typedef void (*YaatIniEntryFn)(const char *section, const char *key, const char *value, void *user);
+
+static void yaat_read_asset_ini_entries(const char *asset_path, YaatIniEntryFn entry_fn, void *user)
+{
+    YaatAssetBuffer buffer;
+    const char *cursor;
+    char line[256];
+    char section[YAAT_ASSET_MAX_NAME];
+
+    if (!yaat_asset_store_load(&g_runtime_asset_store, asset_path, &buffer)) return;
+    cursor = (const char *)buffer.data;
+    section[0] = '\0';
+    while (*cursor != '\0') {
+        int len = 0;
+        char *text;
+        char *equals;
+        while (*cursor != '\0' && *cursor != '\n' && *cursor != '\r') {
+            if (len < (int)sizeof(line) - 1) line[len++] = *cursor;
+            ++cursor;
+        }
+        while (*cursor == '\n' || *cursor == '\r') ++cursor;
+        line[len] = '\0';
+        text = yaat_trim_text(line);
+        if (text[0] == '\0' || text[0] == ';' || text[0] == '#') continue;
+        if (text[0] == '[') {
+            char *close = strchr(text, ']');
+            if (close != 0) { *close = '\0'; yaat_copy(section, sizeof(section), text + 1, strlen(text + 1)); }
+            continue;
+        }
+        equals = strchr(text, '=');
+        if (equals == 0) continue;
+        *equals = '\0';
+        entry_fn(section, yaat_trim_text(text), yaat_trim_text(equals + 1), user);
+    }
+    yaat_asset_buffer_free(&buffer);
+}
+
+typedef struct YaatScriptLoadList {
+    char paths[YAAT_ASSET_MAX_INVENTORY_ITEMS + YAAT_MAX_ROOMS + 16][YAAT_ASSET_MAX_PATH];
+    int count;
+} YaatScriptLoadList;
+
+static void yaat_manifest_script_entry(const char *section, const char *key, const char *value, void *user)
+{
+    YaatScriptLoadList *list = (YaatScriptLoadList *)user;
+    if (strcmp(section, "scripts") != 0 || strcmp(key, "inventory") == 0) return;
+    yaat_load_script_asset_once(list->paths, &list->count,
+                                (int)(sizeof(list->paths) / sizeof(list->paths[0])), value);
+}
+
+static void yaat_manifest_inventory_script_entry(const char *section, const char *key, const char *value, void *user)
+{
+    YaatScriptLoadList *list = (YaatScriptLoadList *)user;
+    if (strcmp(section, "scripts") == 0 && strcmp(key, "inventory") == 0) {
+        yaat_load_script_asset_once(list->paths, &list->count,
+                                    (int)(sizeof(list->paths) / sizeof(list->paths[0])), value);
+    }
+}
+
+typedef struct YaatRoomScriptContext {
+    YaatScriptLoadList *list;
+    char room_ini[YAAT_ASSET_MAX_PATH];
+} YaatRoomScriptContext;
+
+static void yaat_room_script_entry(const char *section, const char *key, const char *value, void *user)
+{
+    YaatRoomScriptContext *context = (YaatRoomScriptContext *)user;
+    char room_script[YAAT_ASSET_MAX_PATH];
+    char *slash;
+    if (strcmp(section, "script") != 0 || strcmp(key, "file") != 0) return;
+    yaat_copy(room_script, sizeof(room_script), context->room_ini, strlen(context->room_ini));
+    slash = strrchr(room_script, '/');
+    if (slash != 0) *(slash + 1) = '\0';
+    strncat(room_script, value, sizeof(room_script) - 1 - strlen(room_script));
+    yaat_load_script_asset_once(context->list->paths, &context->list->count,
+                                (int)(sizeof(context->list->paths) / sizeof(context->list->paths[0])), room_script);
+}
+
+static void yaat_load_room_script_metadata(YaatScriptLoadList *list)
+{
+    WIN32_FIND_DATAA find_data;
+    HANDLE find;
+    char search_path[YAAT_ASSET_MAX_PATH];
+    yaat_runtime_join_path(search_path, sizeof(search_path), "game/rooms", "*");
+    find = FindFirstFileA(search_path, &find_data);
+    if (find == INVALID_HANDLE_VALUE) return;
+    do {
+        char room_ini[YAAT_ASSET_MAX_PATH];
+        YaatRoomScriptContext context;
+        if ((find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+            strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) {
+            continue;
+        }
+        yaat_runtime_join_path(room_ini, sizeof(room_ini), "rooms", find_data.cFileName);
+        yaat_runtime_join_path(room_ini, sizeof(room_ini), room_ini, "room.ini");
+        context.list = list;
+        yaat_copy(context.room_ini, sizeof(context.room_ini), room_ini, strlen(room_ini));
+        yaat_read_asset_ini_entries(room_ini, yaat_room_script_entry, &context);
+    } while (FindNextFileA(find, &find_data));
+    FindClose(find);
+}
+
+static void yaat_load_inventory_scripts(YaatScriptLoadList *list)
 {
     int i;
-    YaatRuntimeInventoryItem *item;
-
-    yaat_load_script_file("game/scripts/inventory.yaat");
-    yaat_load_script_file("scripts/inventory.yaat");
     for (i = 0; i < g_runtime_load.inventory.item_count; ++i) {
-        item = &g_runtime_load.inventory.items[i];
-        if (item->script[0] != '\0') yaat_load_script_file(item->script);
+        YaatRuntimeInventoryItem *item = &g_runtime_load.inventory.items[i];
+        if (item->script[0] != '\0') {
+            yaat_load_script_asset_once(list->paths, &list->count,
+                                        (int)(sizeof(list->paths) / sizeof(list->paths[0])), item->script);
+        }
     }
+    yaat_read_asset_ini_entries("game.ini", yaat_manifest_inventory_script_entry, list);
 }
 
 static int yaat_script_path_already_loaded(char paths[][YAAT_ASSET_MAX_PATH], int count, const char *path)
@@ -2024,46 +2161,15 @@ static int yaat_script_path_already_loaded(char paths[][YAAT_ASSET_MAX_PATH], in
     return 0;
 }
 
-static void yaat_load_inventory_item_scripts(void)
-{
-    char loaded[YAAT_ASSET_MAX_INVENTORY_ITEMS][YAAT_ASSET_MAX_PATH];
-    int loaded_count;
-    int i;
-
-    loaded_count = 0;
-    for (i = 0; i < g_runtime_load.inventory.item_count; ++i) {
-        YaatRuntimeInventoryItem *item;
-        char path[YAAT_ASSET_MAX_PATH];
-        item = &g_runtime_load.inventory.items[i];
-        if (item->script[0] == '\0') continue;
-        if (strncmp(item->script, "game/", 5) == 0 || strncmp(item->script, "game\\", 5) == 0) {
-            yaat_copy(path, sizeof(path), item->script, strlen(item->script));
-        } else {
-            yaat_runtime_join_path(path, sizeof(path), "game", item->script);
-        }
-        if (yaat_script_path_already_loaded(loaded, loaded_count, path)) continue;
-        yaat_load_script_file(path);
-        if (loaded_count < YAAT_ASSET_MAX_INVENTORY_ITEMS) {
-            yaat_copy(loaded[loaded_count], sizeof(loaded[loaded_count]), path, strlen(path));
-            ++loaded_count;
-        }
-    }
-}
-
 static void yaat_load_demo(void)
 {
     int room_index;
 
-    yaat_load_script_package("game/scripts/startup.yaatbc", "game/scripts/startup.yaat");
-    yaat_load_script_package("game/rooms/room000_start/script.yaatbc", "game/rooms/room000_start/script.yaat");
-    yaat_load_script_package("game/rooms/room001_intro/script.yaatbc", "game/rooms/room001_intro/script.yaat");
-    yaat_load_script_package("game/rooms/room002_exit/script.yaatbc", "game/rooms/room002_exit/script.yaat");
-    yaat_load_script_file("scripts/startup.yaat");
-    yaat_load_script_file("rooms/room000_start/script.yaat");
-    yaat_load_script_file("rooms/room001_intro/script.yaat");
-    yaat_load_script_file("rooms/room002_exit/script.yaat");
-    yaat_load_inventory_scripts();
-    yaat_load_inventory_item_scripts();
+    YaatScriptLoadList script_list;
+    memset(&script_list, 0, sizeof(script_list));
+    yaat_read_asset_ini_entries("game.ini", yaat_manifest_script_entry, &script_list);
+    yaat_load_room_script_metadata(&script_list);
+    yaat_load_inventory_scripts(&script_list);
     yaat_load_player_sprite_metadata();
     room_index = g_runtime_load.ok ? yaat_room_index_by_id(g_runtime_load.room.id) : -1;
     if (room_index >= 0) {
