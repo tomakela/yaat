@@ -246,6 +246,20 @@ test('JavaScript room-change regions wait for player motion to complete', () => 
   assert.equal(state.playerIdleAnimation(), 'idle_right');
 });
 
+
+test('browser demo keeps exit locked until flag clears and supports ground-item use chaining', async () => {
+  const [dataLoader, mainScript] = await Promise.all([
+    readFile('src/js/browserGameData.js', 'utf8'),
+    readFile('src/js/browserGame.js', 'utf8'),
+  ]);
+
+  assert.match(dataLoader, /hotspot\.requiredFlag = 'door_locked', hotspot\.requiredFlagValue = false/);
+  assert.match(mainScript, /o\.requiredFlag==null\|\|state\.vars\[o\.requiredFlag\]===o\.requiredFlagValue/);
+  assert.match(mainScript, /state\.pending\?\.inventoryItem&&state\.verb==='use'&&!state\.selectedInv&&o!==state\.pending/);
+  assert.match(mainScript, /state\.chained=o/);
+  assert.match(mainScript, /if\(state\.inv\.includes\(o\.inventoryItem\)\)\{ state\.verb='use'; state\.selectedInv=o\.inventoryItem; if\(continueChainedInteraction\(\)\) return; \}/);
+});
+
 test('JavaScript room entry metadata sets player position and facing', () => {
   const pkg = { vars: [], rooms: [{ id: 'start', label: 'Start', color: 0, events: [], entities: [], entryX: 40, entryY: 150, entryDirection: 'left' }], commands: [], globalEvents: [] };
   const state = new GameState(pkg, { currentRoom: 'start', applyRoomEntry: true });
