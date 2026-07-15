@@ -47,7 +47,7 @@ function cant(verb){ const lines={look:"I don't see anything special.",use:"I ca
 function roomItems(){ const r=rooms[state.room]; return [...r.hotspots, ...r.objects.filter(visibleFor)]; }
 function at(x,y){ const a=roomItems(); for(let i=a.length-1;i>=0;i--){ const o=a[i]; if(x>=o.x&&y>=o.y&&x<o.x+o.w&&y<o.y+o.h) return o; } return null; }
 function walkToObj(o){ state.tx=o.walkX??clamp(o.x+(o.w>>1),PLAYER_W/2,W-PLAYER_W/2); state.ty=o.walkY??clamp(o.y+o.h-1,PLAYER_H,PLAY_H-1); }
-function canChangeRoom(o){ return !!(o&&o.targetRoom&&(!o.requires||o.requires())); }
+function canChangeRoom(o){ return !!(o&&o.targetRoom&&(!o.requires||o.requires())&&(o.requiredFlag==null||state.vars[o.requiredFlag]===o.requiredFlagValue)); }
 function exitSuppressed(o){ return !!(o&&state.suppressedExit===o.id&&state.px>=o.x&&state.py>=o.y&&state.px<o.x+o.w&&state.py<o.y+o.h); }
 function updateSuppressedExit(){ if(!state.suppressedExit) return; const r=rooms[state.room]; const h=r.hotspots.find(h=>h.id===state.suppressedExit); if(!exitSuppressed(h)) state.suppressedExit=null; }
 function hasVerbAction(o,verb){ return !!(o&&(verb==='walk'||o[verb]||(verb==='use'&&!state.selectedInv&&o.inventoryItem))); }
