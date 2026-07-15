@@ -1071,6 +1071,8 @@ static void yaat_draw_runtime_room(void)
 
     yaat_draw_runtime_zmask();
     if (yaat_dialogue_position_for_speaker(&dialogue_x, &dialogue_y)) {
+        yaat_draw_rect(&g_renderer, 16, dialogue_y - 4,
+                       YAAT_BACKBUFFER_WIDTH - 32, 20, 0x00000000UL);
         yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
     }
     yaat_draw_inventory_bar();
@@ -2338,6 +2340,8 @@ static void yaat_draw_script_scene(void)
     yaat_draw_rect(&g_renderer, g_target_x - 1 + g_shake_offset_x, g_target_y - 5 + g_shake_offset_y, 3, 11, 0x000f3c70UL);
     if (g_player_visible) yaat_draw_player();
     if (yaat_dialogue_position_for_speaker(&dialogue_x, &dialogue_y)) {
+        yaat_draw_rect(&g_renderer, 16, dialogue_y - 4,
+                       YAAT_BACKBUFFER_WIDTH - 32, 20, 0x00000000UL);
         yaat_draw_text_block(dialogue_x, dialogue_y, g_dialogue_text, 0x00ffffffUL);
     } else if (g_dialogue_visible) {
         YaatEntity *speaker = yaat_entity_by_id(room, g_dialogue_speaker);
@@ -3019,8 +3023,10 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
             if (strcmp(yaat_active_verb(), "use") == 0 && g_selected_inventory[0] == '\0' && object->inventory_item[0] != '\0') {
                 g_selected_verb[0] = '\0';
                 yaat_runtime_execute_entity_event(id, "take");
-                yaat_copy(g_selected_verb, sizeof(g_selected_verb), "use", strlen("use"));
-                yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), object->inventory_item, strlen(object->inventory_item));
+                if (yaat_has_inventory(object->inventory_item)) {
+                    yaat_copy(g_selected_verb, sizeof(g_selected_verb), "use", strlen("use"));
+                    yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), object->inventory_item, strlen(object->inventory_item));
+                }
                 yaat_update_hover_target_at(x, y);
             } else {
                 yaat_runtime_execute_entity_event(id, event_name);
@@ -3034,7 +3040,9 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
         if (hotspot->width > 0 && hotspot->height > 0 && x >= hotspot->x &&
             y >= hotspot->y && x < hotspot->x + hotspot->width &&
             y < hotspot->y + hotspot->height) {
-            if (yaat_runtime_hotspot_change_room_enabled(hotspot)) {
+            if (strcmp(yaat_active_verb(), "walk") == 0 &&
+                g_selected_inventory[0] == '\0' &&
+                yaat_runtime_hotspot_change_room_enabled(hotspot)) {
                 if (immediate_room_change) {
                     yaat_pending_interaction_clear();
                     yaat_runtime_change_room(hotspot);
@@ -3433,7 +3441,9 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
             }
         }
     }
-    if (immediate_room_change && yaat_runtime_hotspot_change_room_enabled(hotspot)) {
+    if (immediate_room_change && strcmp(yaat_active_verb(), "walk") == 0 &&
+        g_selected_inventory[0] == '\0' &&
+        yaat_runtime_hotspot_change_room_enabled(hotspot)) {
         yaat_click_game(backbuffer_x, backbuffer_y, 1);
         return;
     }
@@ -3442,7 +3452,9 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
         yaat_click_game(backbuffer_x, backbuffer_y, immediate_room_change);
         return;
     }
-    if (yaat_runtime_hotspot_change_room_enabled(hotspot)) {
+    if (strcmp(yaat_active_verb(), "walk") == 0 &&
+        g_selected_inventory[0] == '\0' &&
+        yaat_runtime_hotspot_change_room_enabled(hotspot)) {
         walk_target_x = backbuffer_x;
         walk_target_y = yaat_clamp_int(backbuffer_y, YAAT_PLAYER_HEIGHT,
                                        YAAT_PLAYFIELD_HEIGHT - 1);
@@ -3602,7 +3614,9 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
                     backbuffer_y < object->y + object->height) {
                     YaatEntity *entity = script_room != 0 ?
                                          yaat_entity_by_id(script_room, object->id) : 0;
-                    if (!yaat_should_walk_before_entity_event(entity)) return;
+                    if (!(g_selected_inventory[0] == '\0' &&
+                          object->inventory_item[0] != '\0') &&
+                        !yaat_should_walk_before_entity_event(entity)) return;
                     walk_target_x = backbuffer_x;
                     walk_target_y = yaat_clamp_int(backbuffer_y,
                                                    YAAT_PLAYER_HEIGHT,
