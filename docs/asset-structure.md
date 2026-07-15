@@ -113,14 +113,14 @@ rooms/room001_hall/
 
 Recommended room files:
 
-- `room.ini`: Room metadata, dimensions, music, palette, and default script.
+- `room.ini`: Room metadata, dimensions, music, palette, and the required room script reference.
 - `background.bmp`: Final runtime background image.
 - `walkmask.bmp`: Optional mask describing where the player can walk.
 - `zmask.bmp`: Optional depth/occlusion mask for drawing the player behind foreground objects.
 - `hotspots.ini`: Clickable regions and cursor/action hints.
 - `objects.ini`: Initial room objects, sprites, positions, visibility, and inventory links.
 - `exits.ini`: Simple room-to-room transitions for data-driven exits. Exits may set `target_x`, `target_y`, and `target_direction` to control the player entry point and facing direction in the destination room.
-- `script.yaat`: Room-specific script using the YAAT script language.
+- `script.yaat`: Room-specific script using the YAAT script language. This name is conventional, not implicit; every room's `room.ini` must declare the script under `[script].file`.
 
 ### Example room metadata
 

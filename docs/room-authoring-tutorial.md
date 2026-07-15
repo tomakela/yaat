@@ -78,7 +78,7 @@ Field notes:
 - `[display].palette` points at the shared game palette when using indexed BMP art.
 - `[scale]` gives the renderer simple near/far player scaling hints.
 - `[audio].music` starts or changes background MIDI music for this room.
-- `[script].file` is the room-local YAAT script.
+- `[script].file` is required and names the room-local YAAT script. The browser loader does not infer `script.yaat` when this field is missing.
 
 ## 3. Prepare the background graphic
 
@@ -526,7 +526,7 @@ Also compile or package scripts with the script tooling used by your current wor
 Before considering a room complete, confirm each item below:
 
 - [ ] Folder exists under `game/rooms/<room_id>/`.
-- [ ] `room.ini` has matching `[id].name`, `[display]`, and `[script]` data.
+- [ ] `room.ini` has matching `[id].name`, `[display]`, and required `[script].file` data.
 - [ ] `background.bmp` exists and matches the configured dimensions.
 - [ ] Every `objects.ini` sprite path exists.
 - [ ] Every object has sensible `x`, `y`, `width`, and `height` values.

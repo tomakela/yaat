@@ -64,6 +64,11 @@ function roomPath(roomId, relativePath) {
   return joinPath('rooms', roomId, relativePath);
 }
 
+function requiredRoomScriptFile(roomId, roomIni) {
+  const scriptFile = roomIni.script?.file?.trim();
+  if (!scriptFile) throw new Error(`Room ${roomId} room.ini must declare [script] file`);
+  return scriptFile;
+}
 
 function stripComments(text){ return text.replace(/#.*$/gm, ''); }
 function findMatching(text, openIndex){ let depth=0; for(let i=openIndex;i<text.length;i++){ if(text[i]==='{') depth++; else if(text[i]==='}' && --depth===0) return i; } return -1; }
@@ -183,7 +188,7 @@ async function loadRoom(roomId) {
     fetchText(base + 'hotspots.ini').then(parseIni),
     fetchText(base + 'objects.ini').then(parseIni),
     fetchText(base + 'exits.ini').then(parseIni).catch(() => ({})),
-    fetchText(base + (roomIni.script?.file ?? 'script.yaat')).then(parseYaatRoom),
+    fetchText(base + requiredRoomScriptFile(roomId, roomIni)).then(parseYaatRoom),
   ]);
   const room = {
     events: script.events,
