@@ -101,6 +101,7 @@ static YaatRuntimeObjectMutation g_runtime_object_mutations[YAAT_MAX_RUNTIME_OBJ
 static int g_runtime_object_mutation_count;
 static int g_pending_room_change;
 static char g_pending_room_change_hotspot_id[YAAT_ASSET_MAX_NAME];
+static char g_suppressed_room_change_hotspot_id[YAAT_ASSET_MAX_NAME];
 static int g_pending_interaction;
 static int g_pending_interaction_x;
 static int g_pending_interaction_y;
@@ -170,6 +171,7 @@ static void yaat_execute_entity_verb(YaatEntity *entity, const char *verb,
                                      const char *item, const char *default_verb);
 static void yaat_click_game(int x, int y, int immediate_room_change);
 static void yaat_draw_splash_screen(void);
+static YaatRuntimeHotspot *yaat_runtime_hotspot_by_id(const char *id);
 static void yaat_pending_room_change_maybe_complete(void);
 static void yaat_room_change_region_maybe_enter(void);
 static void yaat_pending_interaction_maybe_complete(void);
@@ -1437,6 +1439,40 @@ static void yaat_pending_room_change_clear(void)
 {
     g_pending_room_change = 0;
     g_pending_room_change_hotspot_id[0] = '\0';
+}
+
+static int yaat_runtime_hotspot_contains_player(const YaatRuntimeHotspot *hotspot)
+{
+    return hotspot != 0 && hotspot->width > 0 && hotspot->height > 0 &&
+           g_player_x >= hotspot->x && g_player_y >= hotspot->y &&
+           g_player_x < hotspot->x + hotspot->width &&
+           g_player_y < hotspot->y + hotspot->height;
+}
+
+static void yaat_suppressed_room_change_update(void)
+{
+    YaatRuntimeHotspot *hotspot;
+
+    if (g_suppressed_room_change_hotspot_id[0] == '\0') return;
+    hotspot = yaat_runtime_hotspot_by_id(g_suppressed_room_change_hotspot_id);
+    if (!yaat_runtime_hotspot_contains_player(hotspot)) {
+        g_suppressed_room_change_hotspot_id[0] = '\0';
+    }
+}
+
+static int yaat_room_change_suppressed(const YaatRuntimeHotspot *hotspot)
+{
+    yaat_suppressed_room_change_update();
+    return hotspot != 0 && g_suppressed_room_change_hotspot_id[0] != '\0' &&
+           strcmp(g_suppressed_room_change_hotspot_id, hotspot->id) == 0;
+}
+
+static void yaat_suppress_room_change_until_player_leaves(const YaatRuntimeHotspot *hotspot)
+{
+    if (!yaat_runtime_hotspot_contains_player(hotspot)) return;
+    yaat_copy(g_suppressed_room_change_hotspot_id,
+              sizeof(g_suppressed_room_change_hotspot_id), hotspot->id,
+              strlen(hotspot->id));
 }
 
 static void yaat_pending_interaction_clear(void)
@@ -2860,7 +2896,9 @@ static void yaat_runtime_execute_entity_event(const char *entity_id, const char 
     (void)script_event;
     yaat_copy(event_name, sizeof(event_name), yaat_active_verb(), strlen(yaat_active_verb()));
     if (strcmp(event_name, "use") == 0 && g_selected_inventory[0] != '\0') {
+        YaatRuntimeHotspot *hotspot = yaat_runtime_hotspot_by_id(entity_id);
         yaat_execute_entity_verb(entity, event_name, g_selected_inventory, 0);
+        yaat_suppress_room_change_until_player_leaves(hotspot);
     } else {
         yaat_execute_entity_verb(entity, event_name, 0, 0);
     }
@@ -3016,6 +3054,7 @@ static void yaat_room_change_region_maybe_enter(void)
     if (!yaat_player_motion_complete()) return;
     hotspot = yaat_runtime_hotspot_at(g_player_x, g_player_y);
     if (!yaat_runtime_hotspot_change_room_enabled(hotspot)) return;
+    if (yaat_room_change_suppressed(hotspot)) return;
     yaat_runtime_change_room(hotspot);
 }
 
