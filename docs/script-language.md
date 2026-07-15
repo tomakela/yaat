@@ -372,10 +372,11 @@ The Win32 runtime exposes a small verb menu. The default verb list is configurab
 [verbs]
 verb0=look
 verb1=use
-verb2=talk
-verb3=take
-verb4=open
-verb5=close
+verb2=read
+verb3=talk
+verb4=take
+verb5=open
+verb6=close
 ```
 
 Runtime dispatch uses this order:
