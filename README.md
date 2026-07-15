@@ -113,6 +113,6 @@ Run the portable correctness checks from the repository root:
 make check
 ```
 
-This builds the script bytecode compiler and fixture bytecode, runs the runtime asset-store smoke test, executes the JavaScript/C bytecode parity tests with Node.js, and validates the loose `game/` asset tree.
+This builds the script bytecode compiler and fixture bytecode, runs the runtime asset-store smoke test, executes the JavaScript/C bytecode parity tests with Node.js, and validates the loose `game/` asset tree. The JavaScript parity test defaults to `MAKE=make`, `CC=cc`, and `C_DATA_MODEL_DUMP=./build/c_data_model_dump`; override those environment variables in CI or non-default toolchains when GNU Make, the C compiler, or the helper executable path differs.
 
 The default `make` target still builds the Windows 95 engine shell and requires Open Watcom (`wcl386`) to be available in the environment.
