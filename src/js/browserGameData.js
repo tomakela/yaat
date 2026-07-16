@@ -178,7 +178,32 @@ function applyExit(room, id, data) {
   hotspot.targetRoom = data.to ?? hotspot.targetRoom;
   hotspot.targetX = data.target_x == null ? hotspot.targetX : intValue(data.target_x);
   hotspot.targetY = data.target_y == null ? hotspot.targetY : intValue(data.target_y);
-  if (data.requires_flag === 'door_locked:false') hotspot.requiredFlag = 'door_locked', hotspot.requiredFlagValue = false;
+  applyRequiredFlag(hotspot, data.requires_flag);
+}
+
+function applyRequiredFlag(hotspot, requiresFlag) {
+  if (!requiresFlag) return;
+  const colonIndex = requiresFlag.indexOf(':');
+  const name = (colonIndex >= 0 ? requiresFlag.slice(0, colonIndex) : requiresFlag).trim();
+  if (!name) return;
+  hotspot.requiredFlag = name;
+  hotspot.requiredFlagValue = colonIndex >= 0 ? boolValue(requiresFlag.slice(colonIndex + 1).trim(), true) : true;
+}
+
+function scanCommandsForRoomIds(commands, ids) {
+  for (const cmd of commands ?? []) {
+    if (cmd.type === 'goto' && cmd.room) ids.add(cmd.room);
+    if (cmd.type === 'if') { scanCommandsForRoomIds(cmd.then, ids); scanCommandsForRoomIds(cmd.else, ids); }
+  }
+}
+
+function collectReferencedRoomIds(room) {
+  const ids = new Set();
+  for (const hotspot of room.hotspots) if (hotspot.targetRoom) ids.add(hotspot.targetRoom);
+  for (const events of [room.events, ...[...room.hotspots, ...room.objects].map(item => item.events)]) {
+    for (const event of events ?? []) scanCommandsForRoomIds(event.commands, ids);
+  }
+  return ids;
 }
 
 async function loadRoom(roomId) {
@@ -195,8 +220,6 @@ async function loadRoom(roomId) {
     vars: script.vars,
     label: roomIni.id?.label ?? roomId,
     bg: roomPath(roomId, roomIni.display?.background ?? 'background.bmp'),
-    hidePlayer: roomId === 'room000_start',
-    hideUI: roomId === 'room000_start',
     scale: {
       nearY: intValue(roomIni.scale?.near_y, PLAY_H - 1),
       nearScale: numberValue(roomIni.scale?.near_scale, 1),
@@ -208,7 +231,6 @@ async function loadRoom(roomId) {
   };
   for (const item of [...room.hotspots, ...room.objects]) item.events = script.entities[item.id]?.events ?? [];
   for (const [id, data] of Object.entries(exitsIni)) if (typeof data === 'object') applyExit(room, id, data);
-  if (roomId === 'room000_start') for (const item of room.objects) item.walkBefore = false;
   return room;
 }
 
@@ -220,14 +242,25 @@ export async function loadGameData() {
     fetchText('actions.ini').then(parseIni),
     fetchText(gameIni.paths?.inventory ?? 'inventory/items.ini').then(parseIni),
   ]);
-  const roomIds = ['room000_start', 'room001_intro', 'room002_exit'];
-  const loadedRooms = await Promise.all(roomIds.map(roomId => loadRoom(joinPath(roomRoot, roomId).replace(/^rooms\//, ''))));
+  const firstRoom = gameIni.game?.first_room;
+  if (!firstRoom) throw new Error('game.ini must declare [game] first_room');
+  const rooms = {};
+  const pendingRoomIds = [firstRoom];
+  const seenRoomIds = new Set(pendingRoomIds);
+  while (pendingRoomIds.length) {
+    const roomId = pendingRoomIds.shift();
+    const room = await loadRoom(joinPath(roomRoot, roomId).replace(/^rooms\//, ''));
+    rooms[roomId] = room;
+    for (const refId of collectReferencedRoomIds(room)) {
+      if (!seenRoomIds.has(refId)) { seenRoomIds.add(refId); pendingRoomIds.push(refId); }
+    }
+  }
   return {
-    initialVars: Object.assign({}, ...loadedRooms.map(room => room.vars || {})),
+    initialVars: Object.assign({}, ...Object.values(rooms).map(room => room.vars || {})),
     playerTransparentColor: colorValue(playerIni.sprites?.transparent_color ?? playerIni.sprites?.color_key),
     ...loadVerbs(actionsIni),
     inventoryDefs: loadInventory(inventoryIni),
-    rooms: Object.fromEntries(roomIds.map((roomId, index) => [roomId, loadedRooms[index]])),
-    firstRoom: gameIni.game?.first_room ?? roomIds[0],
+    rooms,
+    firstRoom,
   };
 }

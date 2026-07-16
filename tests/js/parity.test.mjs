@@ -209,7 +209,7 @@ test('browser demo starts from INI metadata and keeps game folder JavaScript-fre
   assert.match(dataLoader, /nearScale: numberValue\(roomIni\.scale\?\.near_scale, 1\)/);
   assert.match(mainScript, /const \{verbs, verbLabels, inventoryDefs, rooms, firstRoom, initialVars, playerTransparentColor\}=await loadGameData\(\);/);
   assert.match(mainScript, /go\(firstRoom,160,100\); loop\(\);/);
-  assert.match(mainScript, /if\(rooms\[state\.room\]\.hideUI\) return;/);
+  assert.match(mainScript, /if\(state\.playerVisible===false\) return;/);
   assert.match(mainScript, /transparentImg\(path,transparentColor\)/);
   assert.match(mainScript, /transparentImg\(path,playerTransparentColor\)/);
   assert.match(mainScript, /roomScaleForY\(rooms\[state\.room\],state\.py\)/);
@@ -262,13 +262,14 @@ test('browser demo keeps exit locked until flag clears and supports ground-item 
     readFile('src/js/browserGame.js', 'utf8'),
   ]);
 
-  assert.match(dataLoader, /hotspot\.requiredFlag = 'door_locked', hotspot\.requiredFlagValue = false/);
+  assert.match(dataLoader, /function applyRequiredFlag\(hotspot, requiresFlag\)/);
+  assert.match(dataLoader, /hotspot\.requiredFlag = name;/);
   assert.match(mainScript, /o\.requiredFlag==null\|\|state\.vars\[o\.requiredFlag\]===o\.requiredFlagValue/);
   assert.match(mainScript, /function queueChainedGroundUse\(o\)/);
   assert.match(mainScript, /state\.pending\?\.inventoryItem&&state\.verb==='use'&&!state\.selectedInv&&o!==state\.pending/);
   assert.match(mainScript, /if\(queueChainedGroundUse\(o\)\) return/);
   assert.match(mainScript, /state\.chained=o/);
-  assert.match(mainScript, /if\(!\(o\.click&&o\.click\.call\(o\)\)\)\{ if\(o\.take\) o\.take\.call\(o\); else cant\(verb\); \}/);
+  assert.match(mainScript, /if\(!runEntityVerb\(o,'take',null,null\)\) cant\(verb\);/);
   assert.match(mainScript, /if\(state\.inv\.includes\(o\.inventoryItem\)\)\{ state\.verb='use'; state\.selectedInv=o\.inventoryItem; if\(continueChainedInteraction\(\)\) return; \}/);
   assert.match(mainScript, /if\(!state\.pending\)\{ const exit=playerExit\(\); if\(exit\)\{ changeRoomFrom\(exit\); return; \} \}/);
 });
@@ -285,7 +286,7 @@ test('browser demo routes inventory clicks through selected verbs', async () => 
 test('browser demo explicit walk on enabled exit changes room even when standing inside hotspot', async () => {
   const mainScript = await readFile('src/js/browserGame.js', 'utf8');
 
-  assert.match(mainScript, /if\(verb==='walk'\)\{ if\(canChangeRoom\(o\)\) changeRoomFrom\(o\); else if\(o\.use\) o\.use\.call\(o\); clearActionSentence\(\); return; \}/);
+  assert.match(mainScript, /if\(verb==='walk'\)\{ if\(canChangeRoom\(o\)\) changeRoomFrom\(o\); else runEntityVerb\(o,'walk',null,null\); clearActionSentence\(\); return; \}/);
 });
 
 test('JavaScript room entry metadata sets player position and facing', () => {

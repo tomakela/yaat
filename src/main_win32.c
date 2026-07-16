@@ -32,7 +32,8 @@
 #define YAAT_SPLASH_TITLE "YAAT"
 #define YAAT_SPLASH_SUBTITLE "Yet Another Adventure Tool"
 #define YAAT_MAX_VERBS 8
-#define YAAT_VERB_BUTTON_WIDTH 50
+#define YAAT_VERB_BUTTON_WIDTH 38
+#define YAAT_VERB_COLUMNS 4
 #define YAAT_VERB_BUTTON_HEIGHT 13
 #define YAAT_INVENTORY_SLOT_SIZE 20
 #define YAAT_MAX_RUNTIME_OBJECT_MUTATIONS 64
@@ -698,47 +699,6 @@ static const char *yaat_inventory_item_icon_path(YaatRuntimeInventoryItem *item,
     return item->icon;
 }
 
-static void yaat_draw_inventory_bar(void)
-{
-    int i;
-    int slot_x;
-    int slot_y;
-    unsigned long elapsed_ms;
-
-    yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT,
-                   YAAT_BACKBUFFER_WIDTH, YAAT_BACKBUFFER_HEIGHT - YAAT_PLAYFIELD_HEIGHT,
-                   0x00101018UL);
-    elapsed_ms = GetTickCount();
-    for (i = 0; i < g_inventory_count; ++i) {
-        YaatRuntimeInventoryItem *item;
-        YaatBitmap icon_bitmap;
-        const char *icon_path;
-        char logical_path[YAAT_ASSET_MAX_PATH * 2];
-
-        slot_x = 8 + (i * 38);
-        slot_y = YAAT_PLAYFIELD_HEIGHT + 4;
-        yaat_draw_rect(&g_renderer, slot_x, slot_y, 34, 32, 0x00404048UL);
-        yaat_draw_rect(&g_renderer, slot_x + 1, slot_y + 1, 32, 30, 0x00202028UL);
-
-        item = yaat_find_runtime_inventory_item(g_inventory[i]);
-        icon_path = yaat_inventory_item_icon_path(item, elapsed_ms);
-        memset(&icon_bitmap, 0, sizeof(icon_bitmap));
-        if (icon_path[0] != '\0') {
-            yaat_runtime_join_path(logical_path, sizeof(logical_path),
-                                   "inventory", icon_path);
-            if (yaat_load_bmp(&icon_bitmap, logical_path)) {
-                yaat_draw_bitmap(&icon_bitmap,
-                                 slot_x + 17 - (icon_bitmap.width / 2),
-                                 slot_y + 16 - (icon_bitmap.height / 2));
-                yaat_unload_bitmap(&icon_bitmap);
-                continue;
-            }
-        }
-        yaat_draw_rect(&g_renderer, slot_x + 8, slot_y + 8, 18, 16,
-                       yaat_hash_color(g_inventory[i], 0x00a07030UL));
-    }
-}
-
 static void yaat_load_player_sprite_metadata(void)
 {
     unsigned char *buffer;
@@ -1088,7 +1048,6 @@ static void yaat_draw_runtime_room(void)
         yaat_draw_text_block_outlined(dialogue_x, dialogue_y, g_dialogue_text,
                                       0x00ffffffUL, 0x00000000UL);
     }
-    yaat_draw_inventory_bar();
 }
 
 static void yaat_draw_cursor_placeholder(void)
@@ -1202,8 +1161,8 @@ static int yaat_verb_button_at(int x, int y)
     int i;
     if (y < YAAT_PLAYFIELD_HEIGHT) return -1;
     for (i = 0; i < g_verb_count; ++i) {
-        int bx = 4 + (i % 3) * YAAT_VERB_BUTTON_WIDTH;
-        int by = YAAT_PLAYFIELD_HEIGHT + 3 + (i / 3) * (YAAT_VERB_BUTTON_HEIGHT + 2);
+        int bx = 4 + (i % YAAT_VERB_COLUMNS) * YAAT_VERB_BUTTON_WIDTH;
+        int by = YAAT_PLAYFIELD_HEIGHT + 3 + (i / YAAT_VERB_COLUMNS) * (YAAT_VERB_BUTTON_HEIGHT + 2);
         if (x >= bx && y >= by && x < bx + YAAT_VERB_BUTTON_WIDTH &&
             y < by + YAAT_VERB_BUTTON_HEIGHT) return i;
     }
@@ -1213,7 +1172,7 @@ static int yaat_verb_button_at(int x, int y)
 static int yaat_inventory_slot_at(int x, int y)
 {
     int i;
-    int start_x = 8;
+    int start_x = 164;
     int start_y = YAAT_PLAYFIELD_HEIGHT + 4;
     if (y < start_y || y >= start_y + YAAT_INVENTORY_SLOT_SIZE) return -1;
     for (i = 0; i < g_inventory_count; ++i) {
@@ -1809,7 +1768,7 @@ static YaatEvent *yaat_find_event(YaatEvent *events, int count, const char *name
 {
     int i;
     for (i = 0; i < count; ++i) {
-        if (strcmp(events[i].name, name) == 0 && (item == 0 || events[i].item[0] == '\0' || strcmp(events[i].item, item) == 0)) return &events[i];
+        if (strcmp(events[i].name, name) == 0 && (item == 0 ? events[i].item[0] == '\0' : strcmp(events[i].item, item) == 0)) return &events[i];
     }
     return 0;
 }
@@ -2246,8 +2205,8 @@ static void yaat_draw_verb_ui(void)
     int i;
     yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
     for (i = 0; i < g_verb_count; ++i) {
-        int bx = 4 + (i % 3) * YAAT_VERB_BUTTON_WIDTH;
-        int by = YAAT_PLAYFIELD_HEIGHT + 3 + (i / 3) * (YAAT_VERB_BUTTON_HEIGHT + 2);
+        int bx = 4 + (i % YAAT_VERB_COLUMNS) * YAAT_VERB_BUTTON_WIDTH;
+        int by = YAAT_PLAYFIELD_HEIGHT + 3 + (i / YAAT_VERB_COLUMNS) * (YAAT_VERB_BUTTON_HEIGHT + 2);
         unsigned long fill = strcmp(g_verbs[i], g_selected_verb) == 0 ? 0x006a5430UL : 0x00303040UL;
         yaat_draw_rect(&g_renderer, bx, by, YAAT_VERB_BUTTON_WIDTH - 2, YAAT_VERB_BUTTON_HEIGHT, fill);
         yaat_draw_text_block(bx + 5, by + 3, g_verbs[i], 0x00f0f0f0UL);
@@ -2364,7 +2323,6 @@ static void yaat_draw_script_scene(void)
                                           0x00ffffffUL, 0x00000000UL);
         }
     }
-    yaat_draw_inventory_bar();
     yaat_draw_rect(&g_renderer, 0, YAAT_PLAYFIELD_HEIGHT, YAAT_BACKBUFFER_WIDTH, 40, 0x00101018UL);
     yaat_draw_inventory_icons();
     if (g_dialogue_visible) {
@@ -2513,7 +2471,7 @@ static void yaat_render_scene(void)
     } else {
         yaat_draw_error_scene();
     }
-    yaat_draw_verb_ui();
+    if (g_player_visible) yaat_draw_verb_ui();
     yaat_draw_dialogue_choices();
     if (g_cutscene_overlay_visible) {
         yaat_draw_text_block_outlined(24, 17, g_cutscene_overlay_text,
@@ -3015,11 +2973,16 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
     char event_name[32];
     char path[YAAT_ASSET_MAX_PATH];
     YaatRuntimeRoom *room = &g_runtime_load.room;
+    int script_room_index = yaat_runtime_room_script_index();
+    YaatRoom *script_room = (script_room_index >= 0 && script_room_index < g_room_count) ?
+                            &g_rooms[script_room_index] : 0;
 
     for (i = room->object_count - 1; i >= 0; --i) {
+        YaatEntity *entity;
         YaatRuntimeObject *object = &room->objects[i];
         if (object->visible && x >= object->x && y >= object->y &&
             x < object->x + object->width && y < object->y + object->height) {
+            entity = script_room != 0 ? yaat_entity_by_id(script_room, object->id) : 0;
             yaat_pending_interaction_clear();
             yaat_pending_room_change_clear();
             yaat_runtime_join_path(path, sizeof(path),
@@ -3031,12 +2994,24 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
             }
             if (strcmp(yaat_active_verb(), "use") == 0 && g_selected_inventory[0] == '\0' && object->inventory_item[0] != '\0') {
                 g_selected_verb[0] = '\0';
-                yaat_runtime_execute_entity_event(id, "take");
+                if (entity != 0) {
+                    yaat_execute_entity_verb(entity, "take", 0, 0);
+                } else {
+                    yaat_set_object_visible(object->id, 0);
+                    yaat_take_inventory(object->inventory_item);
+                }
                 if (yaat_has_inventory(object->inventory_item)) {
                     yaat_copy(g_selected_verb, sizeof(g_selected_verb), "use", strlen("use"));
                     yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), object->inventory_item, strlen(object->inventory_item));
                 }
                 yaat_update_hover_target_at(x, y);
+            } else if (!g_player_visible) {
+                yaat_runtime_execute_entity_event(id, event_name);
+            } else if (entity != 0) {
+                yaat_execute_entity_verb(entity, yaat_active_verb(),
+                                         strcmp(yaat_active_verb(), "use") == 0 ?
+                                         g_selected_inventory : 0,
+                                         0);
             } else {
                 yaat_runtime_execute_entity_event(id, event_name);
             }
@@ -3045,10 +3020,12 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
     }
 
     for (i = room->hotspot_count - 1; i >= 0; --i) {
+        YaatEntity *entity;
         YaatRuntimeHotspot *hotspot = &room->hotspots[i];
         if (hotspot->width > 0 && hotspot->height > 0 && x >= hotspot->x &&
             y >= hotspot->y && x < hotspot->x + hotspot->width &&
             y < hotspot->y + hotspot->height) {
+            entity = script_room != 0 ? yaat_entity_by_id(script_room, hotspot->id) : 0;
             if (strcmp(yaat_active_verb(), "walk") == 0 &&
                 g_selected_inventory[0] == '\0' &&
                 yaat_runtime_hotspot_change_room_enabled(hotspot)) {
@@ -3062,10 +3039,23 @@ static int yaat_runtime_click_game(int x, int y, int immediate_room_change)
             } else {
                 yaat_pending_interaction_clear();
                 yaat_pending_room_change_clear();
-                yaat_copy(event_name, sizeof(event_name),
-                          hotspot->script_event[0] != '\0' ? hotspot->script_event : "on_click",
-                          strlen(hotspot->script_event[0] != '\0' ? hotspot->script_event : "on_click"));
-                yaat_runtime_execute_entity_event(hotspot->id, event_name);
+                if (!g_player_visible) {
+                    yaat_runtime_execute_entity_event(hotspot->id, event_name);
+                } else if (entity != 0) {
+                    int using_item = strcmp(yaat_active_verb(), "use") == 0 &&
+                                     g_selected_inventory[0] != '\0';
+                    yaat_execute_entity_verb(entity, yaat_active_verb(),
+                                             using_item ? g_selected_inventory : 0,
+                                             0);
+                    if (using_item) {
+                        yaat_suppress_room_change_until_player_leaves(hotspot);
+                    }
+                } else {
+                    yaat_copy(event_name, sizeof(event_name),
+                              hotspot->script_event[0] != '\0' ? hotspot->script_event : "on_click",
+                              strlen(hotspot->script_event[0] != '\0' ? hotspot->script_event : "on_click"));
+                    yaat_runtime_execute_entity_event(hotspot->id, event_name);
+                }
             }
             return 1;
         }
@@ -3123,6 +3113,13 @@ static void yaat_click_inventory_item(const char *item)
     if (item == 0 || item[0] == '\0') return;
     yaat_pending_interaction_clear();
     verb = yaat_active_verb();
+    if (strcmp(verb, "walk") == 0) {
+        yaat_copy(g_selected_verb, sizeof(g_selected_verb), "use", strlen("use"));
+        yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), item,
+                  strlen(item));
+        yaat_update_command_feedback();
+        return;
+    }
     if (strcmp(verb, "use") == 0 && g_selected_inventory[0] == '\0') {
         yaat_copy(g_selected_inventory, sizeof(g_selected_inventory), item, strlen(item));
         return;
@@ -3412,7 +3409,7 @@ static void yaat_set_target_from_client(HWND window, int client_x, int client_y,
                                    &backbuffer_x, &backbuffer_y)) return;
     g_cursor_x = backbuffer_x;
     g_cursor_y = backbuffer_y;
-    verb_index = yaat_verb_button_at(backbuffer_x, backbuffer_y);
+    verb_index = g_player_visible ? yaat_verb_button_at(backbuffer_x, backbuffer_y) : -1;
     if (verb_index >= 0) {
         yaat_pending_interaction_clear();
         yaat_chained_interaction_clear();
